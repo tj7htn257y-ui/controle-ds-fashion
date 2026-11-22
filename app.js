@@ -1,4 +1,3 @@
-
 const $ = id => document.getElementById(id);
 
 const CHAVE_SENHA = 'ds-fashion-password';
@@ -368,14 +367,6 @@ $('pesquisaCliente').addEventListener('input', atualizarClientes);
    DÍVIDAS E PAGAMENTOS DOS CLIENTES
 ========================================= */
 
-/*
-  Os pagamentos são registrados no cadastro financeiro geral,
-  vinculados ao cliente, e não a uma venda específica.
-
-  Para distribuir os pagamentos entre as lojas, o sistema
-  utiliza as dívidas mais antigas primeiro.
-*/
-
 function calcularAlocacoes(clienteId) {
   const vendasPendentes = dados.vendas
     .filter(v =>
@@ -413,8 +404,6 @@ function calcularAlocacoes(clienteId) {
         : numero(p.valor) * numero(p.taxaPercentual) / 100
     );
 
-    let taxaDistribuida = 0;
-
     for (const venda of vendasPendentes) {
       if (restante <= 0) break;
 
@@ -428,8 +417,6 @@ function calcularAlocacoes(clienteId) {
       if (valorPagamento > 0) {
         taxaParte = Math.round(taxaTotal * aplicado / valorPagamento);
       }
-
-      taxaDistribuida += taxaParte;
 
       alocacoes.push({
         pagamentoId: p.id,
@@ -836,6 +823,111 @@ async function excluirProduto(id) {
    VENDAS
 ========================================= */
 
+/* CADASTROS RÁPIDOS NA TELA DE VENDAS */
+
+function alternarCadastroRapido(id) {
+  const elemento = $(id);
+  if (!elemento) return;
+
+  elemento.classList.toggle('oculto');
+}
+
+async function salvarClienteRapido() {
+  const nome = $('novoClienteNome').value.trim();
+  const telefone = $('novoClienteTelefone').value.trim();
+  const observacao = $('novoClienteObservacao').value.trim();
+
+  if (!nome) {
+    alert('Informe o nome do cliente.');
+    $('novoClienteNome').focus();
+    return;
+  }
+
+  const cliente = {
+    id: gerarId(),
+    nome,
+    telefone,
+    observacao
+  };
+
+  try {
+    dados.clientes.push(cliente);
+
+    await salvarDados();
+
+    atualizarTudo();
+
+    $('vendaCliente').value = cliente.id;
+
+    $('novoClienteNome').value = '';
+    $('novoClienteTelefone').value = '';
+    $('novoClienteObservacao').value = '';
+
+    $('cadastroRapidoCliente').classList.add('oculto');
+
+    alert('Cliente cadastrado e selecionado para esta venda!');
+
+  } catch (erro) {
+    console.error(erro);
+    dados.clientes = dados.clientes.filter(c => c.id !== cliente.id);
+    alert('Não foi possível salvar o cliente. Tente novamente.');
+  }
+}
+
+async function salvarProdutoRapido() {
+  const nome = $('novoProdutoNome').value.trim();
+  const custo = numero($('novoProdutoCusto').value);
+  const venda = numero($('novoProdutoVenda').value);
+  const loja = $('vendaLoja').value;
+
+  if (!nome) {
+    alert('Informe o nome do produto.');
+    $('novoProdutoNome').focus();
+    return;
+  }
+
+  if (custo < 0 || venda <= 0) {
+    alert('Informe um custo válido e um preço de venda maior que zero.');
+    return;
+  }
+
+  const produto = {
+    id: gerarId(),
+    loja,
+    nome,
+    custo,
+    venda
+  };
+
+  try {
+    dados.produtos.push(produto);
+
+    await salvarDados();
+
+    atualizarTudo();
+
+    $('vendaProduto').value = produto.id;
+    $('vendaDescricao').value = produto.nome;
+    $('vendaCusto').value = produto.custo;
+    $('vendaValor').value = produto.venda;
+
+    atualizarMargens();
+
+    $('novoProdutoNome').value = '';
+    $('novoProdutoCusto').value = '';
+    $('novoProdutoVenda').value = '';
+
+    $('cadastroRapidoProduto').classList.add('oculto');
+
+    alert('Produto cadastrado e preenchido nesta venda!');
+
+  } catch (erro) {
+    console.error(erro);
+    dados.produtos = dados.produtos.filter(p => p.id !== produto.id);
+    alert('Não foi possível salvar o produto. Tente novamente.');
+  }
+}
+
 function limparVenda() {
   $('formVenda').reset();
   $('vendaId').value = '';
@@ -1083,10 +1175,6 @@ function criarResumoLoja(loja) {
     }
   });
 
-  /*
-    Pagamentos parciais são distribuídos pelas vendas
-    pendentes do cliente, das mais antigas para as novas.
-  */
   const clientesComMovimento = new Set([
     ...vendas.filter(v => v.clienteId).map(v => v.clienteId),
     ...dados.pagamentos.map(p => p.clienteId)
