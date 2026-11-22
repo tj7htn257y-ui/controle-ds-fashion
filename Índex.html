@@ -1,0 +1,143 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#24152f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="DS Fashion">
+  <title>Controle DS Fashion</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f6f3f7;
+      color: #29212e;
+    }
+    header {
+      background: #24152f;
+      color: white;
+      padding: 25px 18px;
+      text-align: center;
+    }
+    header h1 { margin: 0 0 7px; font-size: 25px; }
+    header p { margin: 0; color: #e3d5eb; }
+    main { padding: 16px; max-width: 850px; margin: auto; }
+    .painel {
+      background: white;
+      padding: 18px;
+      border-radius: 14px;
+      margin-bottom: 15px;
+      box-shadow: 0 2px 9px #0000000c;
+    }
+    .painel h2 { margin-top: 0; color: #492d59; }
+    .lojas {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .loja {
+      background: #fff;
+      border: 1px solid #e8ddec;
+      border-radius: 14px;
+      padding: 18px 10px;
+      text-align: center;
+      cursor: pointer;
+      color: #392344;
+    }
+    .loja strong { display: block; margin-top: 8px; }
+    .loja span { font-size: 30px; }
+    nav {
+      display: flex;
+      overflow-x: auto;
+      gap: 8px;
+      padding: 10px 0 15px;
+    }
+    nav button {
+      border: 0;
+      border-radius: 20px;
+      padding: 11px 15px;
+      white-space: nowrap;
+      background: #e9e0ed;
+      color: #392344;
+      font-weight: bold;
+    }
+    nav button.ativo {
+      background: #492d59;
+      color: white;
+    }
+    .secao { display: none; }
+    .secao.ativa { display: block; }
+    .aviso {
+      color: #716779;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    @media(max-width: 420px) {
+      .lojas { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Controle DS Fashion</h1>
+    <p>Gestão inteligente das suas lojas</p>
+  </header>
+
+  <main>
+    <section class="painel">
+      <h2>Bem-vindo!</h2>
+      <p>Escolha uma loja para começar ou consulte o painel geral.</p>
+      <div class="lojas">
+        <button class="loja" onclick="selecionarLoja('roupas')">
+          <span>👗</span>
+          <strong>Loja de Roupas</strong>
+        </button>
+        <button class="loja" onclick="selecionarLoja('joias')">
+          <span>💎</span>
+          <strong>Loja de Joias</strong>
+        </button>
+      </div>
+    </section>
+
+    <nav>
+      <button class="ativo" onclick="abrirSecao('geral',this)">Painel geral</button>
+      <button onclick="abrirSecao('clientes',this)">Clientes</button>
+      <button onclick="abrirSecao('produtos',this)">Produtos e custos</button>
+      <button onclick="abrirSecao('vendas',this)">Vendas</button>
+      <button onclick="abrirSecao('ranking',this)">Ranking VIP</button>
+    </nav>
+
+    <section id="geral" class="painel secao ativa">
+      <h2>Painel geral</h2>
+      <p>Resumo das duas lojas.</p>
+      <p class="aviso">Os indicadores serão preenchidos automaticamente conforme você cadastrar vendas, pagamentos e despesas.</p>
+    </section>
+
+    <section id="clientes" class="painel secao">
+      <h2>Clientes</h2>
+      <p>Cadastro, pesquisa, compras e valores devidos.</p>
+    </section>
+
+    <section id="produtos" class="painel secao">
+      <h2>Produtos e custos</h2>
+      <p>Cadastro de roupas e joias, custos de aquisição e margem de lucro.</p>
+    </section>
+
+    <section id="vendas" class="painel secao">
+      <h2>Vendas</h2>
+      <p>Preços, taxas de cartão, formas de pagamento e parcelamentos.</p>
+    </section>
+
+    <section id="ranking" class="painel secao">
+      <h2>Clientes VIP</h2>
+      <p>Ranking anual por loja e consolidado para identificar quem mais comprou.</p>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
