@@ -247,27 +247,78 @@ th{color:#492d59;background:#faf8fb}
 <h2>Lançamento de vendas</h2>
 <form id="formVenda">
 <input type="hidden" id="vendaId">
+
 <label for="vendaLoja">Loja da venda</label>
 <select id="vendaLoja" required>
 <option value="roupas">Loja de Roupas</option>
 <option value="joias">Loja de Joias</option>
 </select>
+
 <label for="vendaData">Data da venda</label>
 <input id="vendaData" type="date" required>
+
 <label for="vendaCliente">Cliente</label>
-<select id="vendaCliente"><option value="">Venda sem cliente cadastrado</option></select>
+<select id="vendaCliente">
+<option value="">Venda sem cliente cadastrado</option>
+</select>
+<button type="button" class="secundario" onclick="alternarCadastroRapido('cadastroRapidoCliente')">+ Cadastrar cliente nesta venda</button>
+
+<div id="cadastroRapidoCliente" class="resultado oculto">
+<h3>Novo cliente</h3>
+<label for="novoClienteNome">Nome do cliente</label>
+<input id="novoClienteNome" placeholder="Nome completo">
+<label for="novoClienteTelefone">Telefone</label>
+<input id="novoClienteTelefone" placeholder="Telefone ou WhatsApp">
+<label for="novoClienteObservacao">Observações</label>
+<textarea id="novoClienteObservacao" rows="2" placeholder="Informações adicionais"></textarea>
+<button type="button" onclick="salvarClienteRapido()">Salvar e selecionar cliente</button>
+<button type="button" class="secundario" onclick="alternarCadastroRapido('cadastroRapidoCliente')">Cancelar</button>
+</div>
+
 <label for="vendaProduto">Produto</label>
-<select id="vendaProduto"><option value="">Digitar produto manualmente</option></select>
+<select id="vendaProduto">
+<option value="">Digitar produto manualmente</option>
+</select>
+<button type="button" class="secundario" onclick="alternarCadastroRapido('cadastroRapidoProduto')">+ Cadastrar produto nesta venda</button>
+
+<div id="cadastroRapidoProduto" class="resultado oculto">
+<h3>Novo produto</h3>
+<p class="aviso">O produto será cadastrado na loja selecionada acima.</p>
+<label for="novoProdutoNome">Nome do produto</label>
+<input id="novoProdutoNome" placeholder="Descrição do produto">
+<div class="grid">
+<div>
+<label for="novoProdutoCusto">Valor de custo (R$)</label>
+<input id="novoProdutoCusto" type="number" min="0" step="0.01" placeholder="0,00">
+</div>
+<div>
+<label for="novoProdutoVenda">Preço de venda (R$)</label>
+<input id="novoProdutoVenda" type="number" min="0" step="0.01" placeholder="0,00">
+</div>
+</div>
+<button type="button" onclick="salvarProdutoRapido()">Salvar e preencher venda</button>
+<button type="button" class="secundario" onclick="alternarCadastroRapido('cadastroRapidoProduto')">Cancelar</button>
+</div>
+
 <label for="vendaDescricao">Descrição do produto</label>
 <input id="vendaDescricao" placeholder="Nome ou descrição">
+
 <div class="grid">
-<div><label for="vendaCusto">Valor de custo (R$)</label><input id="vendaCusto" type="number" min="0" step="0.01" required placeholder="0,00"></div>
-<div><label for="vendaValor">Valor de venda (R$)</label><input id="vendaValor" type="number" min="0" step="0.01" required placeholder="0,00"></div>
+<div>
+<label for="vendaCusto">Valor de custo (R$)</label>
+<input id="vendaCusto" type="number" min="0" step="0.01" required placeholder="0,00">
 </div>
+<div>
+<label for="vendaValor">Valor de venda (R$)</label>
+<input id="vendaValor" type="number" min="0" step="0.01" required placeholder="0,00">
+</div>
+</div>
+
 <div class="resultado">
 <div class="linha"><span>Lucro bruto</span><strong id="vendaLucroBruto">R$ 0,00</strong></div>
 <div class="linha"><span>Margem sobre a venda</span><strong id="vendaMargem">0,00%</strong></div>
 </div>
+
 <label for="vendaPagamento">Forma de pagamento</label>
 <select id="vendaPagamento">
 <option value="Dinheiro">Dinheiro</option>
@@ -277,24 +328,46 @@ th{color:#492d59;background:#faf8fb}
 <option value="Crédito parcelado">Crédito parcelado</option>
 <option value="Fiado">Fiado</option>
 </select>
+
 <div class="grid">
-<div><label for="vendaTaxa">Taxa da maquininha (%)</label><input id="vendaTaxa" type="number" min="0" max="100" step="0.01" value="0"></div>
-<div><label for="vendaParcelas">Número de parcelas</label><select id="vendaParcelas">
-<option value="1">1 vez</option><option value="2">2 vezes</option><option value="3">3 vezes</option><option value="4">4 vezes</option><option value="5">5 vezes</option><option value="6">6 vezes</option><option value="7">7 vezes</option><option value="8">8 vezes</option><option value="9">9 vezes</option><option value="10">10 vezes</option><option value="11">11 vezes</option><option value="12">12 vezes</option>
-</select></div>
+<div>
+<label for="vendaTaxa">Taxa da maquininha (%)</label>
+<input id="vendaTaxa" type="number" min="0" max="100" step="0.01" value="0">
 </div>
+<div>
+<label for="vendaParcelas">Número de parcelas</label>
+<select id="vendaParcelas">
+<option value="1">1 vez</option>
+<option value="2">2 vezes</option>
+<option value="3">3 vezes</option>
+<option value="4">4 vezes</option>
+<option value="5">5 vezes</option>
+<option value="6">6 vezes</option>
+<option value="7">7 vezes</option>
+<option value="8">8 vezes</option>
+<option value="9">9 vezes</option>
+<option value="10">10 vezes</option>
+<option value="11">11 vezes</option>
+<option value="12">12 vezes</option>
+</select>
+</div>
+</div>
+
 <label for="vendaStatus">Situação do pagamento</label>
 <select id="vendaStatus">
 <option value="recebido">Recebido</option>
 <option value="pendente">A receber</option>
 </select>
+
 <div class="resultado">
 <div class="linha"><span>Taxa descontada</span><strong id="vendaTaxaValor">R$ 0,00</strong></div>
 <div class="linha"><span>Valor líquido após taxa</span><strong id="vendaLiquido">R$ 0,00</strong></div>
 <div class="linha"><span>Lucro real</span><strong id="vendaLucroReal">R$ 0,00</strong></div>
 </div>
+
 <label for="vendaObservacao">Observações</label>
 <textarea id="vendaObservacao" rows="2" placeholder="Observações sobre a venda"></textarea>
+
 <button type="submit" id="botaoVenda">Registrar venda</button>
 <button type="button" class="secundario" onclick="limparVenda()">Limpar</button>
 </form>
