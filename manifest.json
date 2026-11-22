@@ -1,0 +1,11 @@
+
+{
+  "name": "Controle DS Fashion",
+  "short_name": "DS Fashion",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f3f7",
+  "theme_color": "#24152f",
+  "description": "Aplicativo de gestão das lojas de roupas e joias"
+}
