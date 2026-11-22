@@ -8,13 +8,14 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 let chaveCriptografia = null;
+let clienteDetalhadoId = null;
+
 let dados = {
   clientes: [],
   produtos: [],
-  vendas: []
+  vendas: [],
+  pagamentos: []
 };
-
-let lojaAtual = 'geral';
 
 const dinheiro = valor => Number(valor || 0).toLocaleString('pt-BR', {
   style: 'currency',
@@ -22,6 +23,8 @@ const dinheiro = valor => Number(valor || 0).toLocaleString('pt-BR', {
 });
 
 const numero = valor => Number(valor || 0);
+
+const centavos = valor => Math.round(numero(valor) * 100);
 
 const percentual = (custo, venda) => {
   venda = numero(venda);
@@ -82,7 +85,12 @@ async function carregarDados() {
   const registro = localStorage.getItem(CHAVE_DADOS);
 
   if (!registro) {
-    dados = { clientes: [], produtos: [], vendas: [] };
+    dados = {
+      clientes: [],
+      produtos: [],
+      vendas: [],
+      pagamentos: []
+    };
     return;
   }
 
@@ -102,7 +110,8 @@ async function carregarDados() {
   dados = {
     clientes: Array.isArray(carregado.clientes) ? carregado.clientes : [],
     produtos: Array.isArray(carregado.produtos) ? carregado.produtos : [],
-    vendas: Array.isArray(carregado.vendas) ? carregado.vendas : []
+    vendas: Array.isArray(carregado.vendas) ? carregado.vendas : [],
+    pagamentos: Array.isArray(carregado.pagamentos) ? carregado.pagamentos : []
   };
 }
 
@@ -138,7 +147,13 @@ async function configurarSenha() {
       teste: Array.from(new Uint8Array(teste))
     }));
 
-    dados = { clientes: [], produtos: [], vendas: [] };
+    dados = {
+      clientes: [],
+      produtos: [],
+      vendas: [],
+      pagamentos: []
+    };
+
     await salvarDados();
     await entrarNoAplicativo();
 
@@ -200,6 +215,8 @@ async function entrarNoAplicativo() {
 
 function bloquearAplicativo() {
   chaveCriptografia = null;
+  clienteDetalhadoId = null;
+
   $('aplicativo').classList.add('oculto');
   $('telaAcesso').classList.remove('oculto');
   $('senha').value = '';
@@ -228,7 +245,15 @@ function atualizarTudo() {
   atualizarPainel();
   atualizarSeletores();
   atualizarMargens();
+
+  if (clienteDetalhadoId) {
+    atualizarDetalheCliente();
+  }
 }
+
+/* =========================================
+   CLIENTES
+========================================= */
 
 function limparCliente() {
   $('formCliente').reset();
@@ -254,15 +279,18 @@ function atualizarClientes() {
 
   filtrados.forEach(c => {
     const tr = document.createElement('tr');
+
     tr.innerHTML = `
       <td>${escapar(c.nome)}</td>
       <td>${escapar(c.telefone || '-')}</td>
       <td>
         <div class="acoes">
+          <button type="button" onclick="abrirDetalheCliente('${c.id}')">Dívidas</button>
           <button type="button" onclick="editarCliente('${c.id}')">Editar</button>
           <button type="button" class="perigo" onclick="excluirCliente('${c.id}')">Excluir</button>
         </div>
       </td>`;
+
     lista.appendChild(tr);
   });
 }
@@ -271,7 +299,10 @@ $('formCliente').addEventListener('submit', async event => {
   event.preventDefault();
 
   const id = $('clienteId').value;
+  const anterior = dados.clientes.find(c => c.id === id);
+
   const cliente = {
+    ...(anterior || {}),
     id: id || gerarId(),
     nome: $('clienteNome').value.trim(),
     telefone: $('clienteTelefone').value.trim(),
@@ -309,19 +340,378 @@ function editarCliente(id) {
 
 async function excluirCliente(id) {
   const possuiVendas = dados.vendas.some(v => v.clienteId === id);
+  const possuiPagamentos = dados.pagamentos.some(p => p.clienteId === id);
 
-  if (!confirm(
-    possuiVendas
-      ? 'Este cliente possui vendas vinculadas. Excluir o cadastro? O histórico das vendas será mantido.'
-      : 'Deseja realmente excluir este cliente?'
-  )) return;
+  let aviso = 'Deseja realmente excluir este cliente?';
+
+  if (possuiVendas || possuiPagamentos) {
+    aviso =
+      'Este cliente possui histórico de vendas ou pagamentos. ' +
+      'O cadastro será excluído, mas as vendas e os registros financeiros serão mantidos. Deseja continuar?';
+  }
+
+  if (!confirm(aviso)) return;
 
   dados.clientes = dados.clientes.filter(c => c.id !== id);
+
+  if (clienteDetalhadoId === id) {
+    fecharDetalheCliente();
+  }
+
   await salvarDados();
   atualizarTudo();
 }
 
 $('pesquisaCliente').addEventListener('input', atualizarClientes);
+
+/* =========================================
+   DÍVIDAS E PAGAMENTOS DOS CLIENTES
+========================================= */
+
+/*
+  Os pagamentos são registrados no cadastro financeiro geral,
+  vinculados ao cliente, e não a uma venda específica.
+
+  Para distribuir os pagamentos entre as lojas, o sistema
+  utiliza as dívidas mais antigas primeiro.
+*/
+
+function calcularAlocacoes(clienteId) {
+  const vendasPendentes = dados.vendas
+    .filter(v =>
+      v.clienteId === clienteId &&
+      (v.status === 'pendente' || v.pagamento === 'Fiado')
+    )
+    .slice()
+    .sort((a, b) =>
+      (a.data || '').localeCompare(b.data || '') ||
+      (a.id || '').localeCompare(b.id || '')
+    );
+
+  const saldos = new Map();
+
+  vendasPendentes.forEach(v => {
+    saldos.set(v.id, centavos(v.valor));
+  });
+
+  const pagamentos = dados.pagamentos
+    .filter(p => p.clienteId === clienteId)
+    .slice()
+    .sort((a, b) =>
+      (a.data || '').localeCompare(b.data || '') ||
+      (a.id || '').localeCompare(b.id || '')
+    );
+
+  const alocacoes = [];
+
+  pagamentos.forEach(p => {
+    let restante = centavos(p.valor);
+    const valorPagamento = centavos(p.valor);
+    const taxaTotal = centavos(
+      p.taxaValor !== undefined
+        ? p.taxaValor
+        : numero(p.valor) * numero(p.taxaPercentual) / 100
+    );
+
+    let taxaDistribuida = 0;
+
+    for (const venda of vendasPendentes) {
+      if (restante <= 0) break;
+
+      const saldoAtual = saldos.get(venda.id) || 0;
+      if (saldoAtual <= 0) continue;
+
+      const aplicado = Math.min(restante, saldoAtual);
+
+      let taxaParte = 0;
+
+      if (valorPagamento > 0) {
+        taxaParte = Math.round(taxaTotal * aplicado / valorPagamento);
+      }
+
+      taxaDistribuida += taxaParte;
+
+      alocacoes.push({
+        pagamentoId: p.id,
+        vendaId: venda.id,
+        loja: venda.loja,
+        valor: aplicado / 100,
+        taxa: taxaParte / 100,
+        liquido: (aplicado - taxaParte) / 100
+      });
+
+      saldos.set(venda.id, saldoAtual - aplicado);
+      restante -= aplicado;
+    }
+  });
+
+  return { saldos, alocacoes, vendasPendentes, pagamentos };
+}
+
+function obterResumoCliente(clienteId) {
+  const calculo = calcularAlocacoes(clienteId);
+
+  const totalDivida = calculo.vendasPendentes.reduce(
+    (s, v) => s + numero(v.valor),
+    0
+  );
+
+  const totalPago = calculo.pagamentos.reduce(
+    (s, p) => s + numero(p.valor),
+    0
+  );
+
+  const saldoDevedor = Math.max(0, totalDivida - totalPago);
+
+  return {
+    totalDivida,
+    totalPago,
+    saldoDevedor,
+    ...calculo
+  };
+}
+
+function abrirDetalheCliente(id) {
+  const cliente = dados.clientes.find(c => c.id === id);
+  if (!cliente) return;
+
+  clienteDetalhadoId = id;
+
+  $('detalheCliente').classList.remove('oculto');
+  $('tituloDetalheCliente').textContent =
+    'Financeiro de ' + cliente.nome;
+
+  limparPagamento();
+  atualizarDetalheCliente();
+
+  $('detalheCliente').scrollIntoView({
+    behavior: 'smooth',
+    block: 'start'
+  });
+}
+
+function fecharDetalheCliente() {
+  clienteDetalhadoId = null;
+  $('detalheCliente').classList.add('oculto');
+  limparPagamento();
+}
+
+function atualizarDetalheCliente() {
+  const cliente = dados.clientes.find(c => c.id === clienteDetalhadoId);
+  if (!cliente) {
+    fecharDetalheCliente();
+    return;
+  }
+
+  const resumo = obterResumoCliente(cliente.id);
+
+  $('tituloDetalheCliente').textContent =
+    'Financeiro de ' + cliente.nome;
+
+  $('clienteTotalDivida').textContent = dinheiro(resumo.totalDivida);
+  $('clienteTotalPago').textContent = dinheiro(resumo.totalPago);
+  $('clienteSaldoDevedor').textContent = dinheiro(resumo.saldoDevedor);
+
+  const lista = $('listaPagamentos');
+  lista.innerHTML = '';
+
+  const pagamentos = dados.pagamentos
+    .filter(p => p.clienteId === cliente.id)
+    .slice()
+    .sort((a, b) => (b.data || '').localeCompare(a.data || ''));
+
+  if (!pagamentos.length) {
+    lista.innerHTML =
+      '<tr><td colspan="6" class="vazio">Nenhum pagamento registrado.</td></tr>';
+    return;
+  }
+
+  pagamentos.forEach(p => {
+    const taxa = numero(p.taxaValor);
+    const liquido = numero(p.valor) - taxa;
+
+    const tr = document.createElement('tr');
+
+    tr.innerHTML = `
+      <td>${escapar(formatarData(p.data))}</td>
+      <td>${dinheiro(p.valor)}</td>
+      <td>${escapar(p.metodo || '-')}</td>
+      <td>${dinheiro(taxa)}</td>
+      <td>${dinheiro(liquido)}</td>
+      <td>
+        <div class="acoes">
+          <button type="button" onclick="editarPagamento('${p.id}')">Editar</button>
+          <button type="button" class="perigo" onclick="excluirPagamento('${p.id}')">Excluir</button>
+        </div>
+      </td>`;
+
+    lista.appendChild(tr);
+  });
+}
+
+function limparPagamento() {
+  if (!$('formPagamento')) return;
+
+  $('formPagamento').reset();
+  $('pagamentoId').value = '';
+  $('pagamentoData').value = new Date().toLocaleDateString('en-CA');
+  $('pagamentoTaxa').value = 0;
+  $('botaoPagamento').textContent = 'Registrar pagamento';
+  atualizarCamposTaxaPagamento();
+}
+
+function atualizarCamposTaxaPagamento() {
+  const metodo = $('pagamentoMetodo').value;
+
+  const usaCartao = [
+    'Débito',
+    'Crédito à vista',
+    'Crédito parcelado'
+  ].includes(metodo);
+
+  $('camposTaxaPagamento').classList.toggle('oculto', !usaCartao);
+
+  if (!usaCartao) {
+    $('pagamentoTaxa').value = 0;
+  }
+
+  atualizarCalculoPagamento();
+}
+
+function atualizarCalculoPagamento() {
+  const valor = numero($('pagamentoValor').value);
+  const taxa = numero($('pagamentoTaxa').value);
+
+  const taxaValor = valor * taxa / 100;
+  const liquido = valor - taxaValor;
+
+  $('pagamentoTaxaValor').textContent = dinheiro(taxaValor);
+  $('pagamentoLiquido').textContent = dinheiro(liquido);
+}
+
+$('pagamentoMetodo').addEventListener('change', atualizarCamposTaxaPagamento);
+$('pagamentoValor').addEventListener('input', atualizarCalculoPagamento);
+$('pagamentoTaxa').addEventListener('input', atualizarCalculoPagamento);
+
+$('formPagamento').addEventListener('submit', async event => {
+  event.preventDefault();
+
+  const clienteId = clienteDetalhadoId;
+
+  if (!clienteId) {
+    alert('Selecione um cliente primeiro.');
+    return;
+  }
+
+  const id = $('pagamentoId').value;
+  const anterior = dados.pagamentos.find(p => p.id === id);
+
+  const valor = numero($('pagamentoValor').value);
+  const metodo = $('pagamentoMetodo').value;
+  const taxaPercentual = numero($('pagamentoTaxa').value);
+
+  if (valor <= 0) {
+    alert('Informe um valor de pagamento maior que zero.');
+    return;
+  }
+
+  if (taxaPercentual < 0 || taxaPercentual > 100) {
+    alert('Confira a taxa da maquininha.');
+    return;
+  }
+
+  const resumo = obterResumoCliente(clienteId);
+  const limiteDisponivel =
+    resumo.saldoDevedor + (anterior ? numero(anterior.valor) : 0);
+
+  if (valor > limiteDisponivel + 0.001) {
+    alert(
+      'O pagamento não pode ser maior que a dívida disponível. ' +
+      'Saldo disponível: ' + dinheiro(limiteDisponivel)
+    );
+    return;
+  }
+
+  const usaCartao = [
+    'Débito',
+    'Crédito à vista',
+    'Crédito parcelado'
+  ].includes(metodo);
+
+  const taxaReal = usaCartao ? taxaPercentual : 0;
+  const taxaValor = valor * taxaReal / 100;
+
+  const pagamento = {
+    ...(anterior || {}),
+    id: id || gerarId(),
+    clienteId,
+    data: $('pagamentoData').value,
+    valor,
+    metodo,
+    taxaPercentual: taxaReal,
+    taxaValor,
+    liquido: valor - taxaValor,
+    observacao: $('pagamentoObservacao').value.trim()
+  };
+
+  if (!pagamento.data) {
+    alert('Informe a data do pagamento.');
+    return;
+  }
+
+  if (id) {
+    const indice = dados.pagamentos.findIndex(p => p.id === id);
+    if (indice >= 0) dados.pagamentos[indice] = pagamento;
+  } else {
+    dados.pagamentos.push(pagamento);
+  }
+
+  await salvarDados();
+  limparPagamento();
+  atualizarTudo();
+
+  alert('Pagamento registrado com sucesso! A dívida foi atualizada.');
+});
+
+function editarPagamento(id) {
+  const p = dados.pagamentos.find(item => item.id === id);
+  if (!p || p.clienteId !== clienteDetalhadoId) return;
+
+  $('pagamentoId').value = p.id;
+  $('pagamentoData').value = p.data || '';
+  $('pagamentoValor').value = p.valor;
+  $('pagamentoMetodo').value = p.metodo || 'Dinheiro';
+  $('pagamentoTaxa').value = p.taxaPercentual || 0;
+  $('pagamentoObservacao').value = p.observacao || '';
+  $('botaoPagamento').textContent = 'Salvar alterações';
+
+  atualizarCamposTaxaPagamento();
+
+  $('formPagamento').scrollIntoView({
+    behavior: 'smooth',
+    block: 'start'
+  });
+}
+
+async function excluirPagamento(id) {
+  const pagamento = dados.pagamentos.find(p => p.id === id);
+
+  if (!pagamento || pagamento.clienteId !== clienteDetalhadoId) return;
+
+  if (!confirm(
+    'Deseja excluir este pagamento? A dívida do cliente será recalculada automaticamente.'
+  )) return;
+
+  dados.pagamentos = dados.pagamentos.filter(p => p.id !== id);
+
+  await salvarDados();
+  limparPagamento();
+  atualizarTudo();
+}
+
+/* =========================================
+   PRODUTOS
+========================================= */
 
 function limparProduto() {
   $('formProduto').reset();
@@ -365,7 +755,8 @@ function atualizarProdutos() {
   lista.innerHTML = '';
 
   if (!dados.produtos.length) {
-    lista.innerHTML = '<tr><td colspan="6" class="vazio">Nenhum produto cadastrado.</td></tr>';
+    lista.innerHTML =
+      '<tr><td colspan="6" class="vazio">Nenhum produto cadastrado.</td></tr>';
     return;
   }
 
@@ -441,6 +832,10 @@ async function excluirProduto(id) {
   atualizarTudo();
 }
 
+/* =========================================
+   VENDAS
+========================================= */
+
 function limparVenda() {
   $('formVenda').reset();
   $('vendaId').value = '';
@@ -449,6 +844,7 @@ function limparVenda() {
   $('vendaStatus').value = 'recebido';
   $('vendaParcelas').value = '1';
   $('botaoVenda').textContent = 'Registrar venda';
+
   atualizarSeletores();
   atualizarMargens();
 }
@@ -497,6 +893,18 @@ $('vendaProduto').addEventListener('change', () => {
   atualizarMargens();
 });
 
+$('vendaPagamento').addEventListener('change', () => {
+  if ($('vendaPagamento').value === 'Fiado') {
+    $('vendaStatus').value = 'pendente';
+  }
+});
+
+$('vendaStatus').addEventListener('change', () => {
+  if ($('vendaPagamento').value === 'Fiado') {
+    $('vendaStatus').value = 'pendente';
+  }
+});
+
 $('formVenda').addEventListener('submit', async event => {
   event.preventDefault();
 
@@ -504,6 +912,7 @@ $('formVenda').addEventListener('submit', async event => {
   const custo = numero($('vendaCusto').value);
   const valor = numero($('vendaValor').value);
   const taxaPercentual = numero($('vendaTaxa').value);
+  const pagamentoMetodo = $('vendaPagamento').value;
 
   if (valor <= 0) {
     alert('Informe um valor de venda maior que zero.');
@@ -512,6 +921,11 @@ $('formVenda').addEventListener('submit', async event => {
 
   if (custo < 0 || taxaPercentual < 0 || taxaPercentual > 100) {
     alert('Confira os valores de custo e taxa.');
+    return;
+  }
+
+  if (pagamentoMetodo === 'Fiado' && !$('vendaCliente').value) {
+    alert('Para registrar uma venda fiada, selecione um cliente cadastrado.');
     return;
   }
 
@@ -530,11 +944,13 @@ $('formVenda').addEventListener('submit', async event => {
     descricao: $('vendaDescricao').value.trim() || 'Venda sem descrição',
     custo,
     valor,
-    pagamento: $('vendaPagamento').value,
+    pagamento: pagamentoMetodo,
     taxaPercentual,
     taxaValor,
     parcelas: Number($('vendaParcelas').value || 1),
-    status: $('vendaStatus').value,
+    status: pagamentoMetodo === 'Fiado'
+      ? 'pendente'
+      : $('vendaStatus').value,
     observacao: $('vendaObservacao').value.trim()
   };
 
@@ -563,12 +979,16 @@ function atualizarVendas() {
     .sort((a, b) => (b.data || '').localeCompare(a.data || ''));
 
   if (!vendas.length) {
-    lista.innerHTML = '<tr><td colspan="8" class="vazio">Nenhuma venda encontrada.</td></tr>';
+    lista.innerHTML =
+      '<tr><td colspan="8" class="vazio">Nenhuma venda encontrada.</td></tr>';
     return;
   }
 
   vendas.forEach(v => {
-    const lucro = numero(v.valor) - numero(v.custo) - numero(v.taxaValor);
+    const taxa = v.status === 'recebido' ? numero(v.taxaValor) : 0;
+    const lucro = numero(v.valor) - numero(v.custo) - taxa;
+
+    const pendente = v.status === 'pendente' || v.pagamento === 'Fiado';
 
     const tr = document.createElement('tr');
 
@@ -577,9 +997,9 @@ function atualizarVendas() {
       <td>${nomeLoja(v.loja)}</td>
       <td>${escapar(v.descricao)}</td>
       <td>${dinheiro(v.valor)}</td>
-      <td>${dinheiro(v.taxaValor)}</td>
+      <td>${dinheiro(numero(v.taxaValor))}</td>
       <td>${dinheiro(lucro)}</td>
-      <td>${v.status === 'recebido' ? 'Recebido' : 'A receber'}</td>
+      <td>${pendente ? 'A receber' : 'Recebido'}</td>
       <td>
         <div class="acoes">
           <button type="button" onclick="editarVenda('${v.id}')">Editar</button>
@@ -614,55 +1034,138 @@ function editarVenda(id) {
   $('vendaObservacao').value = v.observacao || '';
   $('botaoVenda').textContent = 'Salvar alterações';
 
+  if (v.pagamento === 'Fiado') {
+    $('vendaStatus').value = 'pendente';
+  }
+
   atualizarMargens();
   abrirSecao('vendas', document.querySelectorAll('nav button')[3]);
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 async function excluirVenda(id) {
-  if (!confirm('Deseja realmente excluir esta venda?')) return;
+  if (!confirm('Deseja realmente excluir esta venda? Se houver pagamentos do cliente, o saldo será recalculado.')) return;
 
   dados.vendas = dados.vendas.filter(v => v.id !== id);
   await salvarDados();
   atualizarTudo();
 }
 
-function atualizarPainel() {
-  const vendas = dados.vendas;
+/* =========================================
+   PAINÉIS FINANCEIROS
+========================================= */
 
-  const faturamento = vendas.reduce((s, v) => s + numero(v.valor), 0);
-  const custos = vendas.reduce((s, v) => s + numero(v.custo), 0);
-  const taxas = vendas.reduce((s, v) => s + numero(v.taxaValor), 0);
+function criarResumoLoja(loja) {
+  const vendas = dados.vendas.filter(v => v.loja === loja);
+
+  const faturamento = vendas.reduce(
+    (s, v) => s + numero(v.valor), 0
+  );
+
+  const custos = vendas.reduce(
+    (s, v) => s + numero(v.custo), 0
+  );
+
+  let taxas = 0;
+  let recebido = 0;
+  let aReceber = 0;
+
+  vendas.forEach(v => {
+    const pendente =
+      v.status === 'pendente' || v.pagamento === 'Fiado';
+
+    if (!pendente) {
+      const taxa = numero(v.taxaValor);
+      taxas += taxa;
+      recebido += numero(v.valor) - taxa;
+    } else {
+      aReceber += numero(v.valor);
+    }
+  });
+
+  /*
+    Pagamentos parciais são distribuídos pelas vendas
+    pendentes do cliente, das mais antigas para as novas.
+  */
+  const clientesComMovimento = new Set([
+    ...vendas.filter(v => v.clienteId).map(v => v.clienteId),
+    ...dados.pagamentos.map(p => p.clienteId)
+  ]);
+
+  clientesComMovimento.forEach(clienteId => {
+    const calculo = calcularAlocacoes(clienteId);
+
+    calculo.alocacoes.forEach(a => {
+      if (a.loja !== loja) return;
+
+      aReceber -= a.valor;
+      recebido += a.liquido;
+      taxas += a.taxa;
+    });
+  });
+
+  aReceber = Math.max(0, aReceber);
+
   const lucro = faturamento - custos - taxas;
 
-  const recebidas = vendas
-    .filter(v => v.status === 'recebido')
-    .reduce((s, v) => s + numero(v.valor) - numero(v.taxaValor), 0);
+  const clientes = new Set(
+    vendas.filter(v => v.clienteId).map(v => v.clienteId)
+  );
 
-  const pendentes = vendas
-    .filter(v => v.status === 'pendente')
-    .reduce((s, v) => s + numero(v.valor), 0);
-
-  $('totalFaturamento').textContent = dinheiro(faturamento);
-  $('totalCustos').textContent = dinheiro(custos);
-  $('totalTaxas').textContent = dinheiro(taxas);
-  $('totalLucro').textContent = dinheiro(lucro);
-  $('totalRecebido').textContent = dinheiro(recebidas);
-  $('totalAReceber').textContent = dinheiro(pendentes);
-  $('quantidadeVendas').textContent = vendas.length;
-  $('quantidadeClientes').textContent = dados.clientes.length;
-
-  const lucroRoupas = vendas
-    .filter(v => v.loja === 'roupas')
-    .reduce((s, v) => s + numero(v.valor) - numero(v.custo) - numero(v.taxaValor), 0);
-
-  const lucroJoias = vendas
-    .filter(v => v.loja === 'joias')
-    .reduce((s, v) => s + numero(v.valor) - numero(v.custo) - numero(v.taxaValor), 0);
-
-  $('lucroRoupas').textContent = dinheiro(lucroRoupas);
-  $('lucroJoias').textContent = dinheiro(lucroJoias);
+  return {
+    faturamento,
+    custos,
+    taxas,
+    lucro,
+    recebido,
+    aReceber,
+    quantidadeVendas: vendas.length,
+    quantidadeClientes: clientes.size
+  };
 }
+
+function preencherPainel(prefixo, resumo) {
+  $(prefixo + 'Faturamento').textContent = dinheiro(resumo.faturamento);
+  $(prefixo + 'Custos').textContent = dinheiro(resumo.custos);
+  $(prefixo + 'Taxas').textContent = dinheiro(resumo.taxas);
+  $(prefixo + 'Lucro').textContent = dinheiro(resumo.lucro);
+  $(prefixo + 'Recebido').textContent = dinheiro(resumo.recebido);
+  $(prefixo + 'AReceber').textContent = dinheiro(resumo.aReceber);
+  $(prefixo + 'Vendas').textContent = resumo.quantidadeVendas;
+  $(prefixo + 'Clientes').textContent = resumo.quantidadeClientes;
+}
+
+function atualizarPainel() {
+  const roupas = criarResumoLoja('roupas');
+  const joias = criarResumoLoja('joias');
+
+  preencherPainel('roupas', roupas);
+  preencherPainel('joias', joias);
+
+  const total = {
+    faturamento: roupas.faturamento + joias.faturamento,
+    custos: roupas.custos + joias.custos,
+    taxas: roupas.taxas + joias.taxas,
+    lucro: roupas.lucro + joias.lucro,
+    recebido: roupas.recebido + joias.recebido,
+    aReceber: roupas.aReceber + joias.aReceber,
+    quantidadeVendas: roupas.quantidadeVendas + joias.quantidadeVendas,
+    quantidadeClientes: dados.clientes.length
+  };
+
+  $('totalFaturamento').textContent = dinheiro(total.faturamento);
+  $('totalCustos').textContent = dinheiro(total.custos);
+  $('totalTaxas').textContent = dinheiro(total.taxas);
+  $('totalLucro').textContent = dinheiro(total.lucro);
+  $('totalRecebido').textContent = dinheiro(total.recebido);
+  $('totalAReceber').textContent = dinheiro(total.aReceber);
+  $('quantidadeVendas').textContent = total.quantidadeVendas;
+  $('quantidadeClientes').textContent = total.quantidadeClientes;
+}
+
+/* =========================================
+   FUNÇÕES AUXILIARES
+========================================= */
 
 function nomeLoja(loja) {
   return loja === 'joias' ? 'Joias' : 'Roupas';
@@ -670,8 +1173,12 @@ function nomeLoja(loja) {
 
 function formatarData(data) {
   if (!data) return '';
+
   const partes = data.split('-');
-  return partes.length === 3 ? `${partes[2]}/${partes[1]}/${partes[0]}` : data;
+
+  return partes.length === 3
+    ? `${partes[2]}/${partes[1]}/${partes[0]}`
+    : data;
 }
 
 function escapar(valor) {
@@ -683,6 +1190,10 @@ function escapar(valor) {
     "'": '&#39;'
   })[caractere]);
 }
+
+/* =========================================
+   INICIALIZAÇÃO
+========================================= */
 
 document.addEventListener('DOMContentLoaded', () => {
   const existeSenha = !!localStorage.getItem(CHAVE_SENHA);
@@ -718,4 +1229,5 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   $('vendaData').value = new Date().toLocaleDateString('en-CA');
+  $('pagamentoData').value = new Date().toLocaleDateString('en-CA');
 });
