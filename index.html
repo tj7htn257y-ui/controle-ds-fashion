@@ -227,17 +227,12 @@ th{color:#492d59;background:#faf8fb}
 </select>
 <label for="produtoNome">Nome do produto</label>
 <input id="produtoNome" required placeholder="Descrição do produto">
-<div class="grid">
-<div><label for="produtoCusto">Valor de custo (R$)</label><input id="produtoCusto" type="number" min="0" step="0.01" required placeholder="0,00"></div>
-<div><label for="produtoVenda">Preço de venda (R$)</label><input id="produtoVenda" type="number" min="0" step="0.01" required placeholder="0,00"></div>
-</div>
-<div class="resultado">Margem calculada: <strong id="margemProduto">0,00%</strong></div>
 <button type="submit" id="botaoProduto">Cadastrar produto</button>
 <button type="button" class="secundario" onclick="limparProduto()">Limpar</button>
 </form>
 <div class="listas">
 <table>
-<thead><tr><th>Loja</th><th>Produto</th><th>Custo</th><th>Venda</th><th>Margem</th><th>Ações</th></tr></thead>
+<thead><tr><th>Loja</th><th>Produto</th><th>Ações</th></tr></thead>
 <tbody id="listaProdutos"></tbody>
 </table>
 </div>
@@ -279,16 +274,6 @@ th{color:#492d59;background:#faf8fb}
 <select id="vendaProduto">
 <option value="">Digitar produto manualmente</option>
 </select>
-<button type="button" class="secundario" onclick="alternarCadastroRapido('cadastroRapidoProduto')">+ Cadastrar produto nesta venda</button>
-
-<div id="cadastroRapidoProduto" class="resultado oculto">
-<h3>Novo produto</h3>
-<p class="aviso">O produto será cadastrado na loja selecionada acima.</p>
-<label for="novoProdutoNome">Nome do produto</label>
-<input id="novoProdutoNome" placeholder="Descrição do produto">
-<button type="button" onclick="salvarProdutoRapido()">Salvar e selecionar produto</button>
-<button type="button" class="secundario" onclick="alternarCadastroRapido('cadastroRapidoProduto')">Cancelar</button>
-</div>
 
 <label for="vendaDescricao">Descrição do produto</label>
 <input id="vendaDescricao" placeholder="Nome ou descrição">
