@@ -25,7 +25,6 @@ const dinheiro = valor => Number(valor || 0).toLocaleString('pt-BR', {
 });
 
 const numero = valor => Number(valor || 0);
-
 const centavos = valor => Math.round(numero(valor) * 100);
 
 const percentual = (custo, venda) => {
@@ -95,10 +94,8 @@ async function salvarDados() {
       dados: Array.from(new Uint8Array(criptografado))
     });
 
-    // Armazenamento principal no próprio aparelho.
     localStorage.setItem(CHAVE_DADOS, registro);
 
-    // Cópia de segurança automática no aparelho.
     const backup = {
       versao: 1,
       data: new Date().toISOString(),
@@ -147,7 +144,6 @@ async function carregarDados() {
     pagamentos: Array.isArray(carregado.pagamentos) ? carregado.pagamentos : []
   };
 
-  // Atualiza a cópia automática com os dados carregados.
   await salvarDados();
 }
 
@@ -280,7 +276,6 @@ function criarPainelBackup() {
   if ($('painelBackup')) return;
 
   const painel = document.createElement('div');
-
   painel.id = 'painelBackup';
 
   painel.style.cssText = `
@@ -312,7 +307,6 @@ function criarPainelBackup() {
   }
 
   $('botaoBackupIcloud').addEventListener('click', exportarBackup);
-
   atualizarStatusBackup();
 }
 
@@ -371,7 +365,6 @@ async function exportarBackup() {
         files: [arquivo],
         title: 'Backup Controle DS Fashion'
       });
-
       return;
     }
 
@@ -397,7 +390,6 @@ async function exportarBackup() {
   }
 }
 
-// Tenta salvar novamente quando o aplicativo fica em segundo plano.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden' && chaveCriptografia) {
     salvarDados().catch(erro => console.error('Erro no salvamento:', erro));
@@ -890,7 +882,7 @@ async function excluirPagamento(id) {
 
 /* =========================================
    PRODUTOS
-   Cadastro somente do nome e da loja.
+   Cadastro somente na aba Produtos.
 ========================================= */
 
 function limparProduto() {
@@ -944,7 +936,7 @@ function atualizarProdutos() {
 
   if (!dados.produtos.length) {
     lista.innerHTML =
-      '<tr><td colspan="6" class="vazio">Nenhum produto cadastrado.</td></tr>';
+      '<tr><td colspan="3" class="vazio">Nenhum produto cadastrado.</td></tr>';
     return;
   }
 
@@ -954,9 +946,6 @@ function atualizarProdutos() {
     tr.innerHTML = `
       <td>${nomeLoja(p.loja)}</td>
       <td>${escapar(p.nome)}</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
       <td>
         <div class="acoes">
           <button type="button" onclick="editarProduto('${p.id}')">Editar</button>
@@ -1024,6 +1013,8 @@ async function excluirProduto(id) {
 
 /* =========================================
    VENDAS
+   Descrição digitada manualmente.
+   Não depende do cadastro de produtos.
 ========================================= */
 
 function alternarCadastroRapido(id) {
@@ -1055,7 +1046,6 @@ async function salvarClienteRapido() {
     dados.clientes.push(cliente);
 
     await salvarDados();
-
     atualizarTudo();
 
     $('vendaCliente').value = cliente.id;
@@ -1090,7 +1080,6 @@ function limparVenda() {
 
 function atualizarSeletores() {
   const clienteAtual = $('vendaCliente').value;
-  const produtoAtual = $('vendaProduto').value;
 
   $('vendaCliente').innerHTML =
     '<option value="">Venda sem cliente cadastrado</option>';
@@ -1103,37 +1092,9 @@ function atualizarSeletores() {
   });
 
   $('vendaCliente').value = clienteAtual;
-
-  $('vendaProduto').innerHTML =
-    '<option value="">Digitar produto manualmente</option>';
-
-  dados.produtos
-    .filter(p => p.loja === $('vendaLoja').value)
-    .forEach(p => {
-      const option = document.createElement('option');
-      option.value = p.id;
-      option.textContent = p.nome;
-      $('vendaProduto').appendChild(option);
-    });
-
-  $('vendaProduto').value = produtoAtual;
 }
 
 $('vendaLoja').addEventListener('change', atualizarSeletores);
-
-$('vendaProduto').addEventListener('change', () => {
-  const p = dados.produtos.find(item => item.id === $('vendaProduto').value);
-
-  if (!p) return;
-
-  $('vendaDescricao').value = p.nome;
-
-  // O custo e o preço são informados na própria venda.
-  $('vendaCusto').value = '';
-  $('vendaValor').value = '';
-
-  atualizarMargens();
-});
 
 $('vendaPagamento').addEventListener('change', () => {
   if ($('vendaPagamento').value === 'Fiado') {
@@ -1182,7 +1143,6 @@ $('formVenda').addEventListener('submit', async event => {
     loja: $('vendaLoja').value,
     data: $('vendaData').value,
     clienteId: $('vendaCliente').value,
-    produtoId: $('vendaProduto').value,
     descricao: $('vendaDescricao').value.trim() || 'Venda sem descrição',
     custo,
     valor,
@@ -1198,7 +1158,14 @@ $('formVenda').addEventListener('submit', async event => {
 
   if (id) {
     const indice = dados.vendas.findIndex(v => v.id === id);
-    if (indice >= 0) dados.vendas[indice] = venda;
+
+    if (indice >= 0) {
+      // Preserva campos antigos da venda durante a edição.
+      dados.vendas[indice] = {
+        ...dados.vendas[indice],
+        ...venda
+      };
+    }
   } else {
     dados.vendas.push(venda);
   }
@@ -1265,7 +1232,6 @@ function editarVenda(id) {
 
   $('vendaData').value = v.data || '';
   $('vendaCliente').value = v.clienteId || '';
-  $('vendaProduto').value = v.produtoId || '';
   $('vendaDescricao').value = v.descricao || '';
   $('vendaCusto').value = v.custo;
   $('vendaValor').value = v.valor;
