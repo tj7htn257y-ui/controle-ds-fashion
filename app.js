@@ -3,12 +3,14 @@ const $ = id => document.getElementById(id);
 
 const CHAVE_SENHA = 'ds-fashion-password';
 const CHAVE_DADOS = 'ds-fashion-data';
+const CHAVE_BACKUP = 'ds-fashion-backup';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 let chaveCriptografia = null;
 let clienteDetalhadoId = null;
+let salvamentoEmAndamento = Promise.resolve();
 
 let dados = {
   clientes: [],
@@ -39,6 +41,10 @@ function mostrarMensagem(texto) {
   $('mensagem').textContent = texto;
 }
 
+/* =========================================
+   CRIPTOGRAFIA
+========================================= */
+
 async function derivarChave(senha, salt) {
   const material = await crypto.subtle.importKey(
     'raw',
@@ -62,23 +68,50 @@ async function derivarChave(senha, salt) {
   );
 }
 
+/* =========================================
+   SALVAMENTO AUTOMÁTICO
+========================================= */
+
 async function salvarDados() {
   if (!chaveCriptografia) {
     throw new Error('Aplicativo bloqueado.');
   }
 
-  const iv = crypto.getRandomValues(new Uint8Array(12));
+  salvamentoEmAndamento = salvamentoEmAndamento.then(async () => {
+    if (!chaveCriptografia) {
+      throw new Error('Aplicativo bloqueado.');
+    }
 
-  const criptografado = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    chaveCriptografia,
-    encoder.encode(JSON.stringify(dados))
-  );
+    const iv = crypto.getRandomValues(new Uint8Array(12));
 
-  localStorage.setItem(CHAVE_DADOS, JSON.stringify({
-    iv: Array.from(iv),
-    dados: Array.from(new Uint8Array(criptografado))
-  }));
+    const criptografado = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv },
+      chaveCriptografia,
+      encoder.encode(JSON.stringify(dados))
+    );
+
+    const registro = JSON.stringify({
+      iv: Array.from(iv),
+      dados: Array.from(new Uint8Array(criptografado))
+    });
+
+    // Armazenamento principal no próprio aparelho.
+    localStorage.setItem(CHAVE_DADOS, registro);
+
+    // Cópia de segurança automática no aparelho.
+    const backup = {
+      versao: 1,
+      data: new Date().toISOString(),
+      senha: localStorage.getItem(CHAVE_SENHA),
+      dados: registro
+    };
+
+    localStorage.setItem(CHAVE_BACKUP, JSON.stringify(backup));
+
+    atualizarStatusBackup();
+  });
+
+  return salvamentoEmAndamento;
 }
 
 async function carregarDados() {
@@ -113,7 +146,14 @@ async function carregarDados() {
     vendas: Array.isArray(carregado.vendas) ? carregado.vendas : [],
     pagamentos: Array.isArray(carregado.pagamentos) ? carregado.pagamentos : []
   };
+
+  // Atualiza a cópia automática com os dados carregados.
+  await salvarDados();
 }
+
+/* =========================================
+   SENHA E ACESSO
+========================================= */
 
 async function configurarSenha() {
   const senha = $('senha').value;
@@ -166,14 +206,21 @@ async function configurarSenha() {
 
 async function verificarSenha() {
   const senha = $('senha').value;
-  const registro = JSON.parse(localStorage.getItem(CHAVE_SENHA));
+  const registroSalvo = localStorage.getItem(CHAVE_SENHA);
 
   if (!senha) {
     mostrarMensagem('Digite sua senha.');
     return;
   }
 
+  if (!registroSalvo) {
+    mostrarMensagem('Configuração de senha não encontrada.');
+    return;
+  }
+
   try {
+    const registro = JSON.parse(registroSalvo);
+
     chaveCriptografia = await derivarChave(
       senha,
       new Uint8Array(registro.salt)
@@ -210,6 +257,7 @@ async function entrarNoAplicativo() {
   $('confirmacao').value = '';
   mostrarMensagem('');
 
+  criarPainelBackup();
   atualizarTudo();
 }
 
@@ -223,6 +271,148 @@ function bloquearAplicativo() {
   $('confirmacao').value = '';
   mostrarMensagem('');
 }
+
+/* =========================================
+   BACKUP E EXPORTAÇÃO
+========================================= */
+
+function criarPainelBackup() {
+  if ($('painelBackup')) return;
+
+  const painel = document.createElement('div');
+
+  painel.id = 'painelBackup';
+
+  painel.style.cssText = `
+    margin: 12px;
+    padding: 14px;
+    border-radius: 12px;
+    background: #f1edf5;
+    color: #24152f;
+  `;
+
+  painel.innerHTML = `
+    <strong>Segurança dos seus dados</strong>
+    <p id="statusBackup" style="font-size:13px;margin:8px 0;">
+      Salvamento automático ativado.
+    </p>
+    <button type="button" id="botaoBackupIcloud"
+      style="padding:10px 14px;border:0;border-radius:8px;
+      background:#24152f;color:white;">
+      Exportar backup para iCloud / Arquivos
+    </button>
+  `;
+
+  const nav = $('aplicativo').querySelector('nav');
+
+  if (nav) {
+    nav.parentNode.insertBefore(painel, nav);
+  } else {
+    $('aplicativo').prepend(painel);
+  }
+
+  $('botaoBackupIcloud').addEventListener('click', exportarBackup);
+
+  atualizarStatusBackup();
+}
+
+function atualizarStatusBackup() {
+  const status = $('statusBackup');
+  if (!status) return;
+
+  const backup = localStorage.getItem(CHAVE_BACKUP);
+
+  if (!backup) {
+    status.textContent = 'Aguardando primeiro salvamento.';
+    return;
+  }
+
+  try {
+    const item = JSON.parse(backup);
+    const data = new Date(item.data);
+
+    status.textContent =
+      'Backup automático atualizado em ' +
+      data.toLocaleString('pt-BR');
+  } catch (erro) {
+    status.textContent = 'Backup disponível no aparelho.';
+  }
+}
+
+async function exportarBackup() {
+  try {
+    await salvamentoEmAndamento;
+
+    const backupSalvo = localStorage.getItem(CHAVE_BACKUP);
+
+    if (!backupSalvo) {
+      alert('Ainda não existe um backup para exportar.');
+      return;
+    }
+
+    const conteudo = JSON.stringify({
+      aplicativo: 'Controle DS Fashion',
+      formato: 'Backup criptografado',
+      backup: JSON.parse(backupSalvo)
+    }, null, 2);
+
+    const arquivo = new File(
+      [conteudo],
+      'backup-ds-fashion.json',
+      { type: 'application/json' }
+    );
+
+    if (
+      navigator.share &&
+      navigator.canShare &&
+      navigator.canShare({ files: [arquivo] })
+    ) {
+      await navigator.share({
+        files: [arquivo],
+        title: 'Backup Controle DS Fashion'
+      });
+
+      return;
+    }
+
+    const url = URL.createObjectURL(arquivo);
+    const link = document.createElement('a');
+
+    link.href = url;
+    link.download = 'backup-ds-fashion.json';
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+    alert('Backup exportado. Escolha onde deseja guardar o arquivo.');
+
+  } catch (erro) {
+    if (erro.name === 'AbortError') return;
+
+    console.error(erro);
+    alert('Não foi possível exportar o backup. Tente novamente.');
+  }
+}
+
+// Tenta salvar novamente quando o aplicativo fica em segundo plano.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && chaveCriptografia) {
+    salvarDados().catch(erro => console.error('Erro no salvamento:', erro));
+  }
+});
+
+window.addEventListener('pagehide', () => {
+  if (chaveCriptografia) {
+    salvarDados().catch(erro => console.error('Erro no salvamento:', erro));
+  }
+});
+
+/* =========================================
+   NAVEGAÇÃO
+========================================= */
 
 function abrirSecao(id, botao) {
   document.querySelectorAll('.secao').forEach(secao => {
@@ -365,7 +555,7 @@ async function excluirCliente(id) {
 $('pesquisaCliente').addEventListener('input', atualizarClientes);
 
 /* =========================================
-   DÍVIDAS E PAGAMENTOS DOS CLIENTES
+   DÍVIDAS E PAGAMENTOS
 ========================================= */
 
 function calcularAlocacoes(clienteId) {
@@ -486,6 +676,7 @@ function fecharDetalheCliente() {
 
 function atualizarDetalheCliente() {
   const cliente = dados.clientes.find(c => c.id === clienteDetalhadoId);
+
   if (!cliente) {
     fecharDetalheCliente();
     return;
@@ -699,6 +890,7 @@ async function excluirPagamento(id) {
 
 /* =========================================
    PRODUTOS
+   Cadastro somente do nome e da loja.
 ========================================= */
 
 function limparProduto() {
@@ -709,11 +901,13 @@ function limparProduto() {
 }
 
 function atualizarMargens() {
-  const custo = numero($('produtoCusto').value);
-  const venda = numero($('produtoVenda').value);
+  const custo = $('produtoCusto') ? numero($('produtoCusto').value) : 0;
+  const venda = $('produtoVenda') ? numero($('produtoVenda').value) : 0;
 
-  $('margemProduto').textContent =
-    percentual(custo, venda).toFixed(2).replace('.', ',') + '%';
+  if ($('margemProduto')) {
+    $('margemProduto').textContent =
+      percentual(custo, venda).toFixed(2).replace('.', ',') + '%';
+  }
 
   const custoVenda = numero($('vendaCusto').value);
   const valorVenda = numero($('vendaValor').value);
@@ -732,8 +926,14 @@ function atualizarMargens() {
   $('vendaLucroReal').textContent = dinheiro(lucroReal);
 }
 
-$('produtoCusto').addEventListener('input', atualizarMargens);
-$('produtoVenda').addEventListener('input', atualizarMargens);
+if ($('produtoCusto')) {
+  $('produtoCusto').addEventListener('input', atualizarMargens);
+}
+
+if ($('produtoVenda')) {
+  $('produtoVenda').addEventListener('input', atualizarMargens);
+}
+
 $('vendaCusto').addEventListener('input', atualizarMargens);
 $('vendaValor').addEventListener('input', atualizarMargens);
 $('vendaTaxa').addEventListener('input', atualizarMargens);
@@ -754,9 +954,9 @@ function atualizarProdutos() {
     tr.innerHTML = `
       <td>${nomeLoja(p.loja)}</td>
       <td>${escapar(p.nome)}</td>
-      <td>${dinheiro(p.custo)}</td>
-      <td>${dinheiro(p.venda)}</td>
-      <td>${percentual(p.custo, p.venda).toFixed(2)}%</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
       <td>
         <div class="acoes">
           <button type="button" onclick="editarProduto('${p.id}')">Editar</button>
@@ -772,13 +972,13 @@ $('formProduto').addEventListener('submit', async event => {
   event.preventDefault();
 
   const id = $('produtoId').value;
+  const anterior = dados.produtos.find(p => p.id === id);
 
   const produto = {
+    ...(anterior || {}),
     id: id || gerarId(),
     loja: $('produtoLoja').value,
-    nome: $('produtoNome').value.trim(),
-    custo: numero($('produtoCusto').value),
-    venda: numero($('produtoVenda').value)
+    nome: $('produtoNome').value.trim()
   };
 
   if (!produto.nome) return;
@@ -803,8 +1003,10 @@ function editarProduto(id) {
   $('produtoId').value = p.id;
   $('produtoLoja').value = p.loja;
   $('produtoNome').value = p.nome;
-  $('produtoCusto').value = p.custo;
-  $('produtoVenda').value = p.venda;
+
+  if ($('produtoCusto')) $('produtoCusto').value = '';
+  if ($('produtoVenda')) $('produtoVenda').value = '';
+
   $('botaoProduto').textContent = 'Salvar alterações';
 
   atualizarMargens();
@@ -823,8 +1025,6 @@ async function excluirProduto(id) {
 /* =========================================
    VENDAS
 ========================================= */
-
-/* CADASTRO RÁPIDO DE CLIENTES NA TELA DE VENDAS */
 
 function alternarCadastroRapido(id) {
   const elemento = $(id);
@@ -923,11 +1123,14 @@ $('vendaLoja').addEventListener('change', atualizarSeletores);
 
 $('vendaProduto').addEventListener('change', () => {
   const p = dados.produtos.find(item => item.id === $('vendaProduto').value);
+
   if (!p) return;
 
   $('vendaDescricao').value = p.nome;
-  $('vendaCusto').value = p.custo;
-  $('vendaValor').value = p.venda;
+
+  // O custo e o preço são informados na própria venda.
+  $('vendaCusto').value = '';
+  $('vendaValor').value = '';
 
   atualizarMargens();
 });
