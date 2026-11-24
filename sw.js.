@@ -1,5 +1,5 @@
 
-const CACHE = 'ds-fashion-v5';
+const CACHE = 'ds-fashion-v6';
 
 const FILES = [
   './',
