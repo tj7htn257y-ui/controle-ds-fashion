@@ -55,6 +55,9 @@ th{color:#492d59;background:#faf8fb}
 .painel-loja{border:1px solid #e7dfea;border-radius:12px;padding:14px;margin:14px 0}
 .painel-loja h3{margin-top:0}
 .detalhe-cliente{background:#faf8fb;border:1px solid #e7dfea;border-radius:12px;padding:14px;margin-top:16px}
+.painel-nuvem{border:1px solid #e7dfea;border-radius:12px;padding:14px;margin-top:18px}
+.painel-nuvem h3{margin-top:0}
+#statusNuvem{font-size:13px;line-height:1.5;margin:10px 0;color:#716779}
 @media(min-width:650px){
  .grid{grid-template-columns:repeat(3,minmax(0,1fr))}
  .metricas{grid-template-columns:repeat(4,minmax(0,1fr))}
@@ -73,15 +76,47 @@ th{color:#492d59;background:#faf8fb}
 <section id="telaAcesso" class="card acesso">
 <h2 id="tituloAcesso">Bem-vindo!</h2>
 <p id="descricaoAcesso">Prepare seu acesso pessoal.</p>
-<label for="senha">Sua senha</label>
+
+<label for="senha">Sua senha do aplicativo</label>
 <input id="senha" type="password" autocomplete="current-password" placeholder="Digite sua senha">
+
 <div id="campoConfirmacao" class="oculto">
 <label for="confirmacao">Confirme sua senha</label>
 <input id="confirmacao" type="password" autocomplete="new-password" placeholder="Digite novamente">
 </div>
+
 <button id="botaoAcesso" type="button">Continuar</button>
 <p id="mensagem"></p>
-<p class="aviso">Seus dados são armazenados neste aparelho e protegidos por senha e criptografia local. Faça backups periódicos.</p>
+
+<div class="painel-nuvem">
+<h3>☁️ Conta e sincronização</h3>
+<p class="aviso">Entre ou crie sua conta para permitir que os dados criptografados sejam sincronizados com o Supabase e acessados em outros aparelhos.</p>
+
+<label for="emailNuvem">E-mail da conta</label>
+<input
+ id="emailNuvem"
+ type="email"
+ autocomplete="username"
+ value="seriodanuzza@gmail.com"
+ placeholder="Seu e-mail"
+>
+
+<label for="senhaNuvem">Senha da conta Supabase</label>
+<input
+ id="senhaNuvem"
+ type="password"
+ autocomplete="current-password"
+ placeholder="Crie ou digite sua senha da nuvem"
+>
+
+<button id="botaoCriarContaNuvem" type="button">Criar conta na nuvem</button>
+<button id="botaoEntrarNuvem" type="button" style="margin-top:8px">Entrar na nuvem</button>
+<button id="botaoSairNuvem" type="button" class="secundario oculto" style="margin-top:8px">Sair da conta da nuvem</button>
+
+<p id="statusNuvem">Aguardando conexão com a nuvem.</p>
+</div>
+
+<p class="aviso">A senha do aplicativo protege seus dados por criptografia local. A senha da conta Supabase é usada somente para autenticar sua conta na nuvem. São senhas diferentes.</p>
 </section>
 
 <div id="aplicativo" class="oculto">
@@ -361,13 +396,18 @@ th{color:#492d59;background:#faf8fb}
 
 <section class="card">
 <button class="secundario" onclick="bloquearAplicativo()">Bloquear aplicativo</button>
-<p class="aviso">Faça backups periódicos. Os dados ficam armazenados neste navegador e não são sincronizados automaticamente entre aparelhos.</p>
+<p class="aviso">Os dados serão armazenados neste aparelho e, quando conectado à conta, sincronizados com segurança com a nuvem. Mantenha também seus backups periódicos.</p>
 </section>
 
 </div>
 </main>
 
+<!-- Biblioteca oficial do Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<!-- Código principal do aplicativo -->
 <script src="./app.js"></script>
+
 <script>
 if('serviceWorker' in navigator){
  window.addEventListener('load',()=>{
