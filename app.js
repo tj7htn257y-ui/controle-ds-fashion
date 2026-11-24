@@ -4,13 +4,21 @@ const $ = id => document.getElementById(id);
 const CHAVE_SENHA = 'ds-fashion-password';
 const CHAVE_DADOS = 'ds-fashion-data';
 const CHAVE_BACKUP = 'ds-fashion-backup';
+const CHAVE_DATA_LOCAL = 'ds-fashion-local-updated-at';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
+const DS_SUPABASE_URL = 'https://prufsnmbdiiuvdtczuqj.supabase.co';
+const DS_SUPABASE_KEY = 'sb_publishable_IN5G1_tyftVkbKwgXViaoQ_1LxzmB1S';
+
 let chaveCriptografia = null;
 let clienteDetalhadoId = null;
 let salvamentoEmAndamento = Promise.resolve();
+
+let dsSupabase = null;
+let dsUsuarioNuvem = null;
+let dsRegistroNuvem = null;
 
 let dados = {
   clientes: [],
@@ -68,63 +76,356 @@ async function derivarChave(senha, salt) {
 }
 
 /* =========================================
-   SALVAMENTO AUTOMÁTICO
+   SUPABASE — CONEXÃO
 ========================================= */
 
-async function salvarDados() {
-  if (!chaveCriptografia) {
-    throw new Error('Aplicativo bloqueado.');
+function dsInicializarSupabase() {
+  if (!window.supabase || !window.supabase.createClient) {
+    dsStatusNuvem(
+      'Não foi possível carregar a biblioteca Supabase. Verifique sua internet.',
+      true
+    );
+    return false;
   }
 
-  salvamentoEmAndamento = salvamentoEmAndamento.then(async () => {
-    if (!chaveCriptografia) {
-      throw new Error('Aplicativo bloqueado.');
-    }
-
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-
-    const criptografado = await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv },
-      chaveCriptografia,
-      encoder.encode(JSON.stringify(dados))
+  if (!dsSupabase) {
+    dsSupabase = window.supabase.createClient(
+      DS_SUPABASE_URL,
+      DS_SUPABASE_KEY
     );
+  }
 
-    const registro = JSON.stringify({
-      iv: Array.from(iv),
-      dados: Array.from(new Uint8Array(criptografado))
-    });
-
-    localStorage.setItem(CHAVE_DADOS, registro);
-
-    const backup = {
-      versao: 1,
-      data: new Date().toISOString(),
-      senha: localStorage.getItem(CHAVE_SENHA),
-      dados: registro
-    };
-
-    localStorage.setItem(CHAVE_BACKUP, JSON.stringify(backup));
-
-    atualizarStatusBackup();
-  });
-
-  return salvamentoEmAndamento;
+  return true;
 }
 
-async function carregarDados() {
-  const registro = localStorage.getItem(CHAVE_DADOS);
+function dsStatusNuvem(texto, erro = false) {
+  const elemento = $('statusNuvem');
+  if (!elemento) return;
 
-  if (!registro) {
+  elemento.textContent = texto;
+  elemento.style.color = erro ? '#a83245' : '#16834b';
+}
+
+function dsAtualizarBotoesNuvem() {
+  const conectado = !!dsUsuarioNuvem;
+
+  if ($('botaoCriarContaNuvem')) {
+    $('botaoCriarContaNuvem').classList.toggle('oculto', conectado);
+  }
+
+  if ($('botaoEntrarNuvem')) {
+    $('botaoEntrarNuvem').classList.toggle('oculto', conectado);
+  }
+
+  if ($('botaoSairNuvem')) {
+    $('botaoSairNuvem').classList.toggle('oculto', !conectado);
+  }
+}
+
+async function dsBuscarRegistroNuvem() {
+  if (!dsSupabase || !dsUsuarioNuvem) return null;
+
+  const { data, error } = await dsSupabase
+    .from('ds_fashion_cloud')
+    .select('user_id,password_metadata,encrypted_data,updated_at')
+    .eq('user_id', dsUsuarioNuvem.id)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  dsRegistroNuvem = data || null;
+
+  return dsRegistroNuvem;
+}
+
+/* =========================================
+   SUPABASE — CRIAR CONTA
+========================================= */
+
+async function dsCriarContaNuvem() {
+  if (!dsInicializarSupabase()) return;
+
+  const email = $('emailNuvem').value.trim();
+  const senha = $('senhaNuvem').value;
+
+  if (!email || !senha) {
+    dsStatusNuvem('Informe o e-mail e a senha da conta.', true);
+    return;
+  }
+
+  if (senha.length < 8) {
+    dsStatusNuvem(
+      'A senha da nuvem precisa ter pelo menos 8 caracteres.',
+      true
+    );
+    return;
+  }
+
+  const botao = $('botaoCriarContaNuvem');
+  botao.disabled = true;
+
+  dsStatusNuvem('Criando sua conta na nuvem...');
+
+  try {
+    const { data, error } = await dsSupabase.auth.signUp({
+      email,
+      password: senha
+    });
+
+    if (error) throw error;
+
+    if (data.session) {
+      dsUsuarioNuvem = data.user;
+
+      await dsBuscarRegistroNuvem();
+
+      dsAtualizarBotoesNuvem();
+      dsPrepararAcessoComNuvem();
+
+      dsStatusNuvem('Conta criada e conectada à nuvem.');
+    } else {
+      dsStatusNuvem(
+        'Conta criada! Confira seu e-mail para confirmar o cadastro. Depois volte aqui e entre na nuvem.'
+      );
+    }
+
+  } catch (erro) {
+    console.error('Erro ao criar conta:', erro);
+
+    dsStatusNuvem(
+      'Não foi possível criar a conta: ' +
+      (erro.message || 'verifique os dados.'),
+      true
+    );
+
+  } finally {
+    botao.disabled = false;
+  }
+}
+
+/* =========================================
+   SUPABASE — ENTRAR NA CONTA
+========================================= */
+
+async function dsEntrarNuvem() {
+  if (!dsInicializarSupabase()) return;
+
+  const email = $('emailNuvem').value.trim();
+  const senha = $('senhaNuvem').value;
+
+  if (!email || !senha) {
+    dsStatusNuvem('Informe seu e-mail e a senha da nuvem.', true);
+    return;
+  }
+
+  const botao = $('botaoEntrarNuvem');
+  botao.disabled = true;
+
+  dsStatusNuvem('Conectando à sua conta...');
+
+  try {
+    const { data, error } = await dsSupabase.auth.signInWithPassword({
+      email,
+      password: senha
+    });
+
+    if (error) throw error;
+
+    dsUsuarioNuvem = data.user;
+
+    await dsBuscarRegistroNuvem();
+
+    dsAtualizarBotoesNuvem();
+    dsPrepararAcessoComNuvem();
+
+    dsStatusNuvem(
+      dsRegistroNuvem
+        ? 'Conectado! Dados encontrados na nuvem.'
+        : 'Conectado! Ainda não há dados salvos na nuvem.'
+    );
+
+  } catch (erro) {
+    console.error('Erro ao entrar na nuvem:', erro);
+
+    dsStatusNuvem(
+      'Não foi possível entrar: ' +
+      (erro.message || 'confira e-mail e senha.'),
+      true
+    );
+
+  } finally {
+    botao.disabled = false;
+  }
+}
+
+/* =========================================
+   SUPABASE — SAIR DA CONTA
+========================================= */
+
+async function dsSairNuvem() {
+  if (!dsSupabase) return;
+
+  try {
+    const { error } = await dsSupabase.auth.signOut();
+
+    if (error) throw error;
+
+    dsUsuarioNuvem = null;
+    dsRegistroNuvem = null;
+
+    dsAtualizarBotoesNuvem();
+
+    dsStatusNuvem(
+      'Você saiu da conta da nuvem. Os dados locais continuam no aparelho.'
+    );
+
+  } catch (erro) {
+    console.error(erro);
+    dsStatusNuvem('Não foi possível sair da conta da nuvem.', true);
+  }
+}
+
+/* =========================================
+   SUPABASE — METADADOS DE SENHA
+========================================= */
+
+function dsPrepararAcessoComNuvem() {
+  if (!dsRegistroNuvem || !dsRegistroNuvem.password_metadata) {
+    return;
+  }
+
+  const senhaLocal = localStorage.getItem(CHAVE_SENHA);
+
+  if (!senhaLocal) {
+    localStorage.setItem(
+      CHAVE_SENHA,
+      JSON.stringify(dsRegistroNuvem.password_metadata)
+    );
+
+    $('campoConfirmacao').classList.add('oculto');
+
+    $('tituloAcesso').textContent = 'Acesso protegido';
+
+    $('descricaoAcesso').textContent =
+      'Digite a senha do aplicativo usada para proteger seus dados.';
+
+    $('botaoAcesso').textContent = 'Entrar';
+  }
+}
+
+/* =========================================
+   SUPABASE — SINCRONIZAÇÃO
+========================================= */
+
+async function dsSincronizarNuvem(registroCriptografado) {
+  if (!dsSupabase || !dsUsuarioNuvem) return;
+
+  const senhaSalva = localStorage.getItem(CHAVE_SENHA);
+
+  if (!senhaSalva) {
+    throw new Error('Metadados da senha local não encontrados.');
+  }
+
+  const registroSenha = JSON.parse(senhaSalva);
+  const registroDados = JSON.parse(registroCriptografado);
+
+  const atualizado = new Date().toISOString();
+
+  const { error } = await dsSupabase
+    .from('ds_fashion_cloud')
+    .upsert({
+      user_id: dsUsuarioNuvem.id,
+      password_metadata: registroSenha,
+      encrypted_data: registroDados,
+      updated_at: atualizado
+    }, {
+      onConflict: 'user_id'
+    });
+
+  if (error) throw error;
+
+  dsRegistroNuvem = {
+    user_id: dsUsuarioNuvem.id,
+    password_metadata: registroSenha,
+    encrypted_data: registroDados,
+    updated_at: atualizado
+  };
+
+  dsStatusNuvem(
+    'Dados salvos no aparelho e sincronizados com a nuvem.'
+  );
+}
+
+/* =========================================
+   CARREGAMENTO LOCAL E DA NUVEM
+========================================= */
+
+async function carregarDados() {
+  const registroLocal = localStorage.getItem(CHAVE_DADOS);
+
+  let registroEscolhido = registroLocal;
+  let veioDaNuvem = false;
+
+  if (dsUsuarioNuvem) {
+    try {
+      await dsBuscarRegistroNuvem();
+
+      if (dsRegistroNuvem && dsRegistroNuvem.encrypted_data) {
+        const registroRemoto = JSON.stringify(
+          dsRegistroNuvem.encrypted_data
+        );
+
+        if (!registroLocal) {
+          registroEscolhido = registroRemoto;
+          veioDaNuvem = true;
+
+        } else {
+          const backupLocal = localStorage.getItem(CHAVE_BACKUP);
+          let dataLocal = null;
+
+          if (backupLocal) {
+            try {
+              dataLocal = JSON.parse(backupLocal).data;
+            } catch (_) {}
+          }
+
+          const dataRemota = dsRegistroNuvem.updated_at;
+
+          if (
+            dataLocal &&
+            dataRemota &&
+            new Date(dataRemota).getTime() >
+            new Date(dataLocal).getTime()
+          ) {
+            registroEscolhido = registroRemoto;
+            veioDaNuvem = true;
+          }
+        }
+      }
+
+    } catch (erro) {
+      console.error('Erro ao consultar a nuvem:', erro);
+
+      dsStatusNuvem(
+        'A nuvem está temporariamente indisponível. Os dados locais serão utilizados.',
+        true
+      );
+    }
+  }
+
+  if (!registroEscolhido) {
     dados = {
       clientes: [],
       produtos: [],
       vendas: [],
       pagamentos: []
     };
+
+    await salvarDados();
     return;
   }
 
-  const item = JSON.parse(registro);
+  const item = JSON.parse(registroEscolhido);
 
   const resultado = await crypto.subtle.decrypt(
     {
@@ -138,13 +439,102 @@ async function carregarDados() {
   const carregado = JSON.parse(decoder.decode(resultado));
 
   dados = {
-    clientes: Array.isArray(carregado.clientes) ? carregado.clientes : [],
-    produtos: Array.isArray(carregado.produtos) ? carregado.produtos : [],
-    vendas: Array.isArray(carregado.vendas) ? carregado.vendas : [],
-    pagamentos: Array.isArray(carregado.pagamentos) ? carregado.pagamentos : []
+    clientes: Array.isArray(carregado.clientes)
+      ? carregado.clientes : [],
+
+    produtos: Array.isArray(carregado.produtos)
+      ? carregado.produtos : [],
+
+    vendas: Array.isArray(carregado.vendas)
+      ? carregado.vendas : [],
+
+    pagamentos: Array.isArray(carregado.pagamentos)
+      ? carregado.pagamentos : []
   };
 
-  await salvarDados();
+  if (veioDaNuvem) {
+    localStorage.setItem(CHAVE_DADOS, registroEscolhido);
+
+    localStorage.setItem(
+      CHAVE_DATA_LOCAL,
+      new Date().toISOString()
+    );
+
+    dsStatusNuvem(
+      'Dados restaurados da nuvem para este aparelho.'
+    );
+
+  } else {
+    await salvarDados();
+  }
+}
+
+/* =========================================
+   SALVAMENTO LOCAL + NUVEM
+========================================= */
+
+async function salvarDados() {
+  if (!chaveCriptografia) {
+    throw new Error('Aplicativo bloqueado.');
+  }
+
+  salvamentoEmAndamento = salvamentoEmAndamento
+    .catch(() => {})
+    .then(async () => {
+      if (!chaveCriptografia) {
+        throw new Error('Aplicativo bloqueado.');
+      }
+
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+
+      const criptografado = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        chaveCriptografia,
+        encoder.encode(JSON.stringify(dados))
+      );
+
+      const registro = JSON.stringify({
+        iv: Array.from(iv),
+        dados: Array.from(new Uint8Array(criptografado))
+      });
+
+      // PRIMEIRO: salva os dados criptografados no aparelho.
+      localStorage.setItem(CHAVE_DADOS, registro);
+
+      const agora = new Date().toISOString();
+
+      localStorage.setItem(CHAVE_DATA_LOCAL, agora);
+
+      // SEGUNDO: atualiza o backup local.
+      const backup = {
+        versao: 1,
+        data: agora,
+        senha: localStorage.getItem(CHAVE_SENHA),
+        dados: registro
+      };
+
+      localStorage.setItem(CHAVE_BACKUP, JSON.stringify(backup));
+
+      atualizarStatusBackup();
+
+      // TERCEIRO: tenta sincronizar com a nuvem.
+      // Se a internet falhar, os dados locais continuam salvos.
+      if (dsUsuarioNuvem && dsSupabase) {
+        try {
+          await dsSincronizarNuvem(registro);
+
+        } catch (erro) {
+          console.error('Erro na sincronização:', erro);
+
+          dsStatusNuvem(
+            'Dados salvos no aparelho. A sincronização falhou e será tentada novamente no próximo salvamento.',
+            true
+          );
+        }
+      }
+    });
+
+  return salvamentoEmAndamento;
 }
 
 /* =========================================
@@ -167,6 +557,7 @@ async function configurarSenha() {
 
   try {
     const salt = crypto.getRandomValues(new Uint8Array(16));
+
     chaveCriptografia = await derivarChave(senha, salt);
 
     const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -195,8 +586,12 @@ async function configurarSenha() {
 
   } catch (erro) {
     console.error(erro);
+
     chaveCriptografia = null;
-    mostrarMensagem('Erro ao configurar a senha. Tente novamente.');
+
+    mostrarMensagem(
+      'Erro ao configurar a senha. Tente novamente.'
+    );
   }
 }
 
@@ -240,8 +635,12 @@ async function verificarSenha() {
 
   } catch (erro) {
     console.error(erro);
+
     chaveCriptografia = null;
-    mostrarMensagem('Senha incorreta ou dados indisponíveis.');
+
+    mostrarMensagem(
+      'Senha incorreta ou dados indisponíveis.'
+    );
   }
 }
 
@@ -251,10 +650,18 @@ async function entrarNoAplicativo() {
 
   $('senha').value = '';
   $('confirmacao').value = '';
+  $('senhaNuvem').value = '';
+
   mostrarMensagem('');
 
   criarPainelBackup();
   atualizarTudo();
+
+  if (dsUsuarioNuvem) {
+    dsStatusNuvem(
+      'Conta conectada. Sincronização automática ativada.'
+    );
+  }
 }
 
 function bloquearAplicativo() {
@@ -263,8 +670,10 @@ function bloquearAplicativo() {
 
   $('aplicativo').classList.add('oculto');
   $('telaAcesso').classList.remove('oculto');
+
   $('senha').value = '';
   $('confirmacao').value = '';
+
   mostrarMensagem('');
 }
 
@@ -306,7 +715,11 @@ function criarPainelBackup() {
     $('aplicativo').prepend(painel);
   }
 
-  $('botaoBackupIcloud').addEventListener('click', exportarBackup);
+  $('botaoBackupIcloud').addEventListener(
+    'click',
+    exportarBackup
+  );
+
   atualizarStatusBackup();
 }
 
@@ -328,6 +741,7 @@ function atualizarStatusBackup() {
     status.textContent =
       'Backup automático atualizado em ' +
       data.toLocaleString('pt-BR');
+
   } catch (erro) {
     status.textContent = 'Backup disponível no aparelho.';
   }
@@ -365,6 +779,7 @@ async function exportarBackup() {
         files: [arquivo],
         title: 'Backup Controle DS Fashion'
       });
+
       return;
     }
 
@@ -380,25 +795,37 @@ async function exportarBackup() {
 
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 
-    alert('Backup exportado. Escolha onde deseja guardar o arquivo.');
+    alert(
+      'Backup exportado. Escolha onde deseja guardar o arquivo.'
+    );
 
   } catch (erro) {
     if (erro.name === 'AbortError') return;
 
     console.error(erro);
-    alert('Não foi possível exportar o backup. Tente novamente.');
+
+    alert(
+      'Não foi possível exportar o backup. Tente novamente.'
+    );
   }
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden' && chaveCriptografia) {
-    salvarDados().catch(erro => console.error('Erro no salvamento:', erro));
+  if (
+    document.visibilityState === 'hidden' &&
+    chaveCriptografia
+  ) {
+    salvarDados().catch(
+      erro => console.error('Erro no salvamento:', erro)
+    );
   }
 });
 
 window.addEventListener('pagehide', () => {
   if (chaveCriptografia) {
-    salvarDados().catch(erro => console.error('Erro no salvamento:', erro));
+    salvarDados().catch(
+      erro => console.error('Erro no salvamento:', erro)
+    );
   }
 });
 
@@ -455,7 +882,8 @@ function atualizarClientes() {
   lista.innerHTML = '';
 
   if (!filtrados.length) {
-    lista.innerHTML = '<tr><td colspan="3" class="vazio">Nenhum cliente cadastrado.</td></tr>';
+    lista.innerHTML =
+      '<tr><td colspan="3" class="vazio">Nenhum cliente cadastrado.</td></tr>';
     return;
   }
 
@@ -503,6 +931,7 @@ $('formCliente').addEventListener('submit', async event => {
   await salvarDados();
   limparCliente();
   atualizarTudo();
+
   alert('Cliente salvo com sucesso!');
 });
 
@@ -514,9 +943,11 @@ function editarCliente(id) {
   $('clienteNome').value = c.nome || '';
   $('clienteTelefone').value = c.telefone || '';
   $('clienteObservacao').value = c.observacao || '';
+
   $('botaoCliente').textContent = 'Salvar alterações';
 
   abrirSecao('clientes', document.querySelectorAll('nav button')[1]);
+
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -581,6 +1012,7 @@ function calcularAlocacoes(clienteId) {
   pagamentos.forEach(p => {
     let restante = centavos(p.valor);
     const valorPagamento = centavos(p.valor);
+
     const taxaTotal = centavos(
       p.taxaValor !== undefined
         ? p.taxaValor
@@ -598,7 +1030,9 @@ function calcularAlocacoes(clienteId) {
       let taxaParte = 0;
 
       if (valorPagamento > 0) {
-        taxaParte = Math.round(taxaTotal * aplicado / valorPagamento);
+        taxaParte = Math.round(
+          taxaTotal * aplicado / valorPagamento
+        );
       }
 
       alocacoes.push({
@@ -615,7 +1049,12 @@ function calcularAlocacoes(clienteId) {
     }
   });
 
-  return { saldos, alocacoes, vendasPendentes, pagamentos };
+  return {
+    saldos,
+    alocacoes,
+    vendasPendentes,
+    pagamentos
+  };
 }
 
 function obterResumoCliente(clienteId) {
@@ -631,7 +1070,10 @@ function obterResumoCliente(clienteId) {
     0
   );
 
-  const saldoDevedor = Math.max(0, totalDivida - totalPago);
+  const saldoDevedor = Math.max(
+    0,
+    totalDivida - totalPago
+  );
 
   return {
     totalDivida,
@@ -648,6 +1090,7 @@ function abrirDetalheCliente(id) {
   clienteDetalhadoId = id;
 
   $('detalheCliente').classList.remove('oculto');
+
   $('tituloDetalheCliente').textContent =
     'Financeiro de ' + cliente.nome;
 
@@ -662,12 +1105,16 @@ function abrirDetalheCliente(id) {
 
 function fecharDetalheCliente() {
   clienteDetalhadoId = null;
+
   $('detalheCliente').classList.add('oculto');
+
   limparPagamento();
 }
 
 function atualizarDetalheCliente() {
-  const cliente = dados.clientes.find(c => c.id === clienteDetalhadoId);
+  const cliente = dados.clientes.find(
+    c => c.id === clienteDetalhadoId
+  );
 
   if (!cliente) {
     fecharDetalheCliente();
@@ -679,9 +1126,14 @@ function atualizarDetalheCliente() {
   $('tituloDetalheCliente').textContent =
     'Financeiro de ' + cliente.nome;
 
-  $('clienteTotalDivida').textContent = dinheiro(resumo.totalDivida);
-  $('clienteTotalPago').textContent = dinheiro(resumo.totalPago);
-  $('clienteSaldoDevedor').textContent = dinheiro(resumo.saldoDevedor);
+  $('clienteTotalDivida').textContent =
+    dinheiro(resumo.totalDivida);
+
+  $('clienteTotalPago').textContent =
+    dinheiro(resumo.totalPago);
+
+  $('clienteSaldoDevedor').textContent =
+    dinheiro(resumo.saldoDevedor);
 
   const lista = $('listaPagamentos');
   lista.innerHTML = '';
@@ -689,7 +1141,9 @@ function atualizarDetalheCliente() {
   const pagamentos = dados.pagamentos
     .filter(p => p.clienteId === cliente.id)
     .slice()
-    .sort((a, b) => (b.data || '').localeCompare(a.data || ''));
+    .sort((a, b) =>
+      (b.data || '').localeCompare(a.data || '')
+    );
 
   if (!pagamentos.length) {
     lista.innerHTML =
@@ -724,10 +1178,17 @@ function limparPagamento() {
   if (!$('formPagamento')) return;
 
   $('formPagamento').reset();
+
   $('pagamentoId').value = '';
-  $('pagamentoData').value = new Date().toLocaleDateString('en-CA');
+
+  $('pagamentoData').value =
+    new Date().toLocaleDateString('en-CA');
+
   $('pagamentoTaxa').value = 0;
-  $('botaoPagamento').textContent = 'Registrar pagamento';
+
+  $('botaoPagamento').textContent =
+    'Registrar pagamento';
+
   atualizarCamposTaxaPagamento();
 }
 
@@ -740,7 +1201,10 @@ function atualizarCamposTaxaPagamento() {
     'Crédito parcelado'
   ].includes(metodo);
 
-  $('camposTaxaPagamento').classList.toggle('oculto', !usaCartao);
+  $('camposTaxaPagamento').classList.toggle(
+    'oculto',
+    !usaCartao
+  );
 
   if (!usaCartao) {
     $('pagamentoTaxa').value = 0;
@@ -756,13 +1220,27 @@ function atualizarCalculoPagamento() {
   const taxaValor = valor * taxa / 100;
   const liquido = valor - taxaValor;
 
-  $('pagamentoTaxaValor').textContent = dinheiro(taxaValor);
-  $('pagamentoLiquido').textContent = dinheiro(liquido);
+  $('pagamentoTaxaValor').textContent =
+    dinheiro(taxaValor);
+
+  $('pagamentoLiquido').textContent =
+    dinheiro(liquido);
 }
 
-$('pagamentoMetodo').addEventListener('change', atualizarCamposTaxaPagamento);
-$('pagamentoValor').addEventListener('input', atualizarCalculoPagamento);
-$('pagamentoTaxa').addEventListener('input', atualizarCalculoPagamento);
+$('pagamentoMetodo').addEventListener(
+  'change',
+  atualizarCamposTaxaPagamento
+);
+
+$('pagamentoValor').addEventListener(
+  'input',
+  atualizarCalculoPagamento
+);
+
+$('pagamentoTaxa').addEventListener(
+  'input',
+  atualizarCalculoPagamento
+);
 
 $('formPagamento').addEventListener('submit', async event => {
   event.preventDefault();
@@ -775,11 +1253,17 @@ $('formPagamento').addEventListener('submit', async event => {
   }
 
   const id = $('pagamentoId').value;
-  const anterior = dados.pagamentos.find(p => p.id === id);
+
+  const anterior = dados.pagamentos.find(
+    p => p.id === id
+  );
 
   const valor = numero($('pagamentoValor').value);
   const metodo = $('pagamentoMetodo').value;
-  const taxaPercentual = numero($('pagamentoTaxa').value);
+
+  const taxaPercentual = numero(
+    $('pagamentoTaxa').value
+  );
 
   if (valor <= 0) {
     alert('Informe um valor de pagamento maior que zero.');
@@ -792,8 +1276,10 @@ $('formPagamento').addEventListener('submit', async event => {
   }
 
   const resumo = obterResumoCliente(clienteId);
+
   const limiteDisponivel =
-    resumo.saldoDevedor + (anterior ? numero(anterior.valor) : 0);
+    resumo.saldoDevedor +
+    (anterior ? numero(anterior.valor) : 0);
 
   if (valor > limiteDisponivel + 0.001) {
     alert(
@@ -831,13 +1317,20 @@ $('formPagamento').addEventListener('submit', async event => {
   }
 
   if (id) {
-    const indice = dados.pagamentos.findIndex(p => p.id === id);
-    if (indice >= 0) dados.pagamentos[indice] = pagamento;
+    const indice = dados.pagamentos.findIndex(
+      p => p.id === id
+    );
+
+    if (indice >= 0) {
+      dados.pagamentos[indice] = pagamento;
+    }
+
   } else {
     dados.pagamentos.push(pagamento);
   }
 
   await salvarDados();
+
   limparPagamento();
   atualizarTudo();
 
@@ -845,7 +1338,10 @@ $('formPagamento').addEventListener('submit', async event => {
 });
 
 function editarPagamento(id) {
-  const p = dados.pagamentos.find(item => item.id === id);
+  const p = dados.pagamentos.find(
+    item => item.id === id
+  );
+
   if (!p || p.clienteId !== clienteDetalhadoId) return;
 
   $('pagamentoId').value = p.id;
@@ -854,6 +1350,7 @@ function editarPagamento(id) {
   $('pagamentoMetodo').value = p.metodo || 'Dinheiro';
   $('pagamentoTaxa').value = p.taxaPercentual || 0;
   $('pagamentoObservacao').value = p.observacao || '';
+
   $('botaoPagamento').textContent = 'Salvar alterações';
 
   atualizarCamposTaxaPagamento();
@@ -865,40 +1362,58 @@ function editarPagamento(id) {
 }
 
 async function excluirPagamento(id) {
-  const pagamento = dados.pagamentos.find(p => p.id === id);
+  const pagamento = dados.pagamentos.find(
+    p => p.id === id
+  );
 
-  if (!pagamento || pagamento.clienteId !== clienteDetalhadoId) return;
+  if (
+    !pagamento ||
+    pagamento.clienteId !== clienteDetalhadoId
+  ) return;
 
   if (!confirm(
     'Deseja excluir este pagamento? A dívida do cliente será recalculada automaticamente.'
   )) return;
 
-  dados.pagamentos = dados.pagamentos.filter(p => p.id !== id);
+  dados.pagamentos = dados.pagamentos.filter(
+    p => p.id !== id
+  );
 
   await salvarDados();
+
   limparPagamento();
   atualizarTudo();
 }
 
 /* =========================================
    PRODUTOS
-   Cadastro somente na aba Produtos.
 ========================================= */
 
 function limparProduto() {
   $('formProduto').reset();
+
   $('produtoId').value = '';
-  $('botaoProduto').textContent = 'Cadastrar produto';
+
+  $('botaoProduto').textContent =
+    'Cadastrar produto';
+
   atualizarMargens();
 }
 
 function atualizarMargens() {
-  const custo = $('produtoCusto') ? numero($('produtoCusto').value) : 0;
-  const venda = $('produtoVenda') ? numero($('produtoVenda').value) : 0;
+  const custo = $('produtoCusto')
+    ? numero($('produtoCusto').value)
+    : 0;
+
+  const venda = $('produtoVenda')
+    ? numero($('produtoVenda').value)
+    : 0;
 
   if ($('margemProduto')) {
     $('margemProduto').textContent =
-      percentual(custo, venda).toFixed(2).replace('.', ',') + '%';
+      percentual(custo, venda)
+        .toFixed(2)
+        .replace('.', ',') + '%';
   }
 
   const custoVenda = numero($('vendaCusto').value);
@@ -910,25 +1425,52 @@ function atualizarMargens() {
   const liquido = valorVenda - taxaValor;
   const lucroReal = liquido - custoVenda;
 
-  $('vendaLucroBruto').textContent = dinheiro(bruto);
+  $('vendaLucroBruto').textContent =
+    dinheiro(bruto);
+
   $('vendaMargem').textContent =
-    percentual(custoVenda, valorVenda).toFixed(2).replace('.', ',') + '%';
-  $('vendaTaxaValor').textContent = dinheiro(taxaValor);
-  $('vendaLiquido').textContent = dinheiro(liquido);
-  $('vendaLucroReal').textContent = dinheiro(lucroReal);
+    percentual(custoVenda, valorVenda)
+      .toFixed(2)
+      .replace('.', ',') + '%';
+
+  $('vendaTaxaValor').textContent =
+    dinheiro(taxaValor);
+
+  $('vendaLiquido').textContent =
+    dinheiro(liquido);
+
+  $('vendaLucroReal').textContent =
+    dinheiro(lucroReal);
 }
 
 if ($('produtoCusto')) {
-  $('produtoCusto').addEventListener('input', atualizarMargens);
+  $('produtoCusto').addEventListener(
+    'input',
+    atualizarMargens
+  );
 }
 
 if ($('produtoVenda')) {
-  $('produtoVenda').addEventListener('input', atualizarMargens);
+  $('produtoVenda').addEventListener(
+    'input',
+    atualizarMargens
+  );
 }
 
-$('vendaCusto').addEventListener('input', atualizarMargens);
-$('vendaValor').addEventListener('input', atualizarMargens);
-$('vendaTaxa').addEventListener('input', atualizarMargens);
+$('vendaCusto').addEventListener(
+  'input',
+  atualizarMargens
+);
+
+$('vendaValor').addEventListener(
+  'input',
+  atualizarMargens
+);
+
+$('vendaTaxa').addEventListener(
+  'input',
+  atualizarMargens
+);
 
 function atualizarProdutos() {
   const lista = $('listaProdutos');
@@ -961,7 +1503,10 @@ $('formProduto').addEventListener('submit', async event => {
   event.preventDefault();
 
   const id = $('produtoId').value;
-  const anterior = dados.produtos.find(p => p.id === id);
+
+  const anterior = dados.produtos.find(
+    p => p.id === id
+  );
 
   const produto = {
     ...(anterior || {}),
@@ -973,48 +1518,75 @@ $('formProduto').addEventListener('submit', async event => {
   if (!produto.nome) return;
 
   if (id) {
-    const indice = dados.produtos.findIndex(p => p.id === id);
-    if (indice >= 0) dados.produtos[indice] = produto;
+    const indice = dados.produtos.findIndex(
+      p => p.id === id
+    );
+
+    if (indice >= 0) {
+      dados.produtos[indice] = produto;
+    }
+
   } else {
     dados.produtos.push(produto);
   }
 
   await salvarDados();
+
   limparProduto();
   atualizarTudo();
+
   alert('Produto salvo com sucesso!');
 });
 
 function editarProduto(id) {
-  const p = dados.produtos.find(item => item.id === id);
+  const p = dados.produtos.find(
+    item => item.id === id
+  );
+
   if (!p) return;
 
   $('produtoId').value = p.id;
   $('produtoLoja').value = p.loja;
   $('produtoNome').value = p.nome;
 
-  if ($('produtoCusto')) $('produtoCusto').value = '';
-  if ($('produtoVenda')) $('produtoVenda').value = '';
+  if ($('produtoCusto')) {
+    $('produtoCusto').value = '';
+  }
+
+  if ($('produtoVenda')) {
+    $('produtoVenda').value = '';
+  }
 
   $('botaoProduto').textContent = 'Salvar alterações';
 
   atualizarMargens();
-  abrirSecao('produtos', document.querySelectorAll('nav button')[2]);
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  abrirSecao(
+    'produtos',
+    document.querySelectorAll('nav button')[2]
+  );
+
+  window.scrollTo({
+    top: 0,
+    behavior: 'smooth'
+  });
 }
 
 async function excluirProduto(id) {
-  if (!confirm('Deseja realmente excluir este produto? As vendas já registradas serão mantidas.')) return;
+  if (!confirm(
+    'Deseja realmente excluir este produto? As vendas já registradas serão mantidas.'
+  )) return;
 
-  dados.produtos = dados.produtos.filter(p => p.id !== id);
+  dados.produtos = dados.produtos.filter(
+    p => p.id !== id
+  );
+
   await salvarDados();
   atualizarTudo();
 }
 
 /* =========================================
    VENDAS
-   Descrição digitada manualmente.
-   Não depende do cadastro de produtos.
 ========================================= */
 
 function alternarCadastroRapido(id) {
@@ -1027,7 +1599,9 @@ function alternarCadastroRapido(id) {
 async function salvarClienteRapido() {
   const nome = $('novoClienteNome').value.trim();
   const telefone = $('novoClienteTelefone').value.trim();
-  const observacao = $('novoClienteObservacao').value.trim();
+
+  const observacao =
+    $('novoClienteObservacao').value.trim();
 
   if (!nome) {
     alert('Informe o nome do cliente.');
@@ -1046,6 +1620,7 @@ async function salvarClienteRapido() {
     dados.clientes.push(cliente);
 
     await salvarDados();
+
     atualizarTudo();
 
     $('vendaCliente').value = cliente.id;
@@ -1060,18 +1635,27 @@ async function salvarClienteRapido() {
 
   } catch (erro) {
     console.error(erro);
-    dados.clientes = dados.clientes.filter(c => c.id !== cliente.id);
+
+    dados.clientes = dados.clientes.filter(
+      c => c.id !== cliente.id
+    );
+
     alert('Não foi possível salvar o cliente. Tente novamente.');
   }
 }
 
 function limparVenda() {
   $('formVenda').reset();
+
   $('vendaId').value = '';
-  $('vendaData').value = new Date().toLocaleDateString('en-CA');
+
+  $('vendaData').value =
+    new Date().toLocaleDateString('en-CA');
+
   $('vendaTaxa').value = 0;
   $('vendaStatus').value = 'recebido';
   $('vendaParcelas').value = '1';
+
   $('botaoVenda').textContent = 'Registrar venda';
 
   atualizarSeletores();
@@ -1086,15 +1670,20 @@ function atualizarSeletores() {
 
   dados.clientes.forEach(c => {
     const option = document.createElement('option');
+
     option.value = c.id;
     option.textContent = c.nome;
+
     $('vendaCliente').appendChild(option);
   });
 
   $('vendaCliente').value = clienteAtual;
 }
 
-$('vendaLoja').addEventListener('change', atualizarSeletores);
+$('vendaLoja').addEventListener(
+  'change',
+  atualizarSeletores
+);
 
 $('vendaPagamento').addEventListener('change', () => {
   if ($('vendaPagamento').value === 'Fiado') {
@@ -1112,9 +1701,14 @@ $('formVenda').addEventListener('submit', async event => {
   event.preventDefault();
 
   const id = $('vendaId').value;
+
   const custo = numero($('vendaCusto').value);
   const valor = numero($('vendaValor').value);
-  const taxaPercentual = numero($('vendaTaxa').value);
+
+  const taxaPercentual = numero(
+    $('vendaTaxa').value
+  );
+
   const pagamentoMetodo = $('vendaPagamento').value;
 
   if (valor <= 0) {
@@ -1122,17 +1716,31 @@ $('formVenda').addEventListener('submit', async event => {
     return;
   }
 
-  if (custo < 0 || taxaPercentual < 0 || taxaPercentual > 100) {
+  if (
+    custo < 0 ||
+    taxaPercentual < 0 ||
+    taxaPercentual > 100
+  ) {
     alert('Confira os valores de custo e taxa.');
     return;
   }
 
-  if (pagamentoMetodo === 'Fiado' && !$('vendaCliente').value) {
-    alert('Para registrar uma venda fiada, selecione um cliente cadastrado.');
+  if (
+    pagamentoMetodo === 'Fiado' &&
+    !$('vendaCliente').value
+  ) {
+    alert(
+      'Para registrar uma venda fiada, selecione um cliente cadastrado.'
+    );
     return;
   }
 
-  if (valor < custo && !confirm('O preço de venda está abaixo do custo. Deseja continuar?')) {
+  if (
+    valor < custo &&
+    !confirm(
+      'O preço de venda está abaixo do custo. Deseja continuar?'
+    )
+  ) {
     return;
   }
 
@@ -1143,36 +1751,43 @@ $('formVenda').addEventListener('submit', async event => {
     loja: $('vendaLoja').value,
     data: $('vendaData').value,
     clienteId: $('vendaCliente').value,
-    descricao: $('vendaDescricao').value.trim() || 'Venda sem descrição',
+    descricao:
+      $('vendaDescricao').value.trim() || 'Venda sem descrição',
     custo,
     valor,
     pagamento: pagamentoMetodo,
     taxaPercentual,
     taxaValor,
     parcelas: Number($('vendaParcelas').value || 1),
+
     status: pagamentoMetodo === 'Fiado'
       ? 'pendente'
       : $('vendaStatus').value,
+
     observacao: $('vendaObservacao').value.trim()
   };
 
   if (id) {
-    const indice = dados.vendas.findIndex(v => v.id === id);
+    const indice = dados.vendas.findIndex(
+      v => v.id === id
+    );
 
     if (indice >= 0) {
-      // Preserva campos antigos da venda durante a edição.
       dados.vendas[indice] = {
         ...dados.vendas[indice],
         ...venda
       };
     }
+
   } else {
     dados.vendas.push(venda);
   }
 
   await salvarDados();
+
   limparVenda();
   atualizarTudo();
+
   alert('Venda registrada com sucesso!');
 });
 
@@ -1183,9 +1798,13 @@ function atualizarVendas() {
   lista.innerHTML = '';
 
   const vendas = dados.vendas
-    .filter(v => filtro === 'todas' || v.loja === filtro)
+    .filter(v =>
+      filtro === 'todas' || v.loja === filtro
+    )
     .slice()
-    .sort((a, b) => (b.data || '').localeCompare(a.data || ''));
+    .sort((a, b) =>
+      (b.data || '').localeCompare(a.data || '')
+    );
 
   if (!vendas.length) {
     lista.innerHTML =
@@ -1194,10 +1813,16 @@ function atualizarVendas() {
   }
 
   vendas.forEach(v => {
-    const taxa = v.status === 'recebido' ? numero(v.taxaValor) : 0;
-    const lucro = numero(v.valor) - numero(v.custo) - taxa;
+    const taxa = v.status === 'recebido'
+      ? numero(v.taxaValor)
+      : 0;
 
-    const pendente = v.status === 'pendente' || v.pagamento === 'Fiado';
+    const lucro =
+      numero(v.valor) - numero(v.custo) - taxa;
+
+    const pendente =
+      v.status === 'pendente' ||
+      v.pagamento === 'Fiado';
 
     const tr = document.createElement('tr');
 
@@ -1220,14 +1845,21 @@ function atualizarVendas() {
   });
 }
 
-$('filtroHistorico').addEventListener('change', atualizarVendas);
+$('filtroHistorico').addEventListener(
+  'change',
+  atualizarVendas
+);
 
 function editarVenda(id) {
-  const v = dados.vendas.find(item => item.id === id);
+  const v = dados.vendas.find(
+    item => item.id === id
+  );
+
   if (!v) return;
 
   $('vendaId').value = v.id;
   $('vendaLoja').value = v.loja;
+
   atualizarSeletores();
 
   $('vendaData').value = v.data || '';
@@ -1235,26 +1867,51 @@ function editarVenda(id) {
   $('vendaDescricao').value = v.descricao || '';
   $('vendaCusto').value = v.custo;
   $('vendaValor').value = v.valor;
-  $('vendaPagamento').value = v.pagamento || 'Dinheiro';
-  $('vendaTaxa').value = v.taxaPercentual || 0;
-  $('vendaParcelas').value = String(v.parcelas || 1);
-  $('vendaStatus').value = v.status || 'recebido';
-  $('vendaObservacao').value = v.observacao || '';
-  $('botaoVenda').textContent = 'Salvar alterações';
+
+  $('vendaPagamento').value =
+    v.pagamento || 'Dinheiro';
+
+  $('vendaTaxa').value =
+    v.taxaPercentual || 0;
+
+  $('vendaParcelas').value =
+    String(v.parcelas || 1);
+
+  $('vendaStatus').value =
+    v.status || 'recebido';
+
+  $('vendaObservacao').value =
+    v.observacao || '';
+
+  $('botaoVenda').textContent =
+    'Salvar alterações';
 
   if (v.pagamento === 'Fiado') {
     $('vendaStatus').value = 'pendente';
   }
 
   atualizarMargens();
-  abrirSecao('vendas', document.querySelectorAll('nav button')[3]);
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  abrirSecao(
+    'vendas',
+    document.querySelectorAll('nav button')[3]
+  );
+
+  window.scrollTo({
+    top: 0,
+    behavior: 'smooth'
+  });
 }
 
 async function excluirVenda(id) {
-  if (!confirm('Deseja realmente excluir esta venda? Se houver pagamentos do cliente, o saldo será recalculado.')) return;
+  if (!confirm(
+    'Deseja realmente excluir esta venda? Se houver pagamentos do cliente, o saldo será recalculado.'
+  )) return;
 
-  dados.vendas = dados.vendas.filter(v => v.id !== id);
+  dados.vendas = dados.vendas.filter(
+    v => v.id !== id
+  );
+
   await salvarDados();
   atualizarTudo();
 }
@@ -1264,14 +1921,18 @@ async function excluirVenda(id) {
 ========================================= */
 
 function criarResumoLoja(loja) {
-  const vendas = dados.vendas.filter(v => v.loja === loja);
+  const vendas = dados.vendas.filter(
+    v => v.loja === loja
+  );
 
   const faturamento = vendas.reduce(
-    (s, v) => s + numero(v.valor), 0
+    (s, v) => s + numero(v.valor),
+    0
   );
 
   const custos = vendas.reduce(
-    (s, v) => s + numero(v.custo), 0
+    (s, v) => s + numero(v.custo),
+    0
   );
 
   let taxas = 0;
@@ -1280,19 +1941,25 @@ function criarResumoLoja(loja) {
 
   vendas.forEach(v => {
     const pendente =
-      v.status === 'pendente' || v.pagamento === 'Fiado';
+      v.status === 'pendente' ||
+      v.pagamento === 'Fiado';
 
     if (!pendente) {
       const taxa = numero(v.taxaValor);
+
       taxas += taxa;
       recebido += numero(v.valor) - taxa;
+
     } else {
       aReceber += numero(v.valor);
     }
   });
 
   const clientesComMovimento = new Set([
-    ...vendas.filter(v => v.clienteId).map(v => v.clienteId),
+    ...vendas
+      .filter(v => v.clienteId)
+      .map(v => v.clienteId),
+
     ...dados.pagamentos.map(p => p.clienteId)
   ]);
 
@@ -1313,7 +1980,9 @@ function criarResumoLoja(loja) {
   const lucro = faturamento - custos - taxas;
 
   const clientes = new Set(
-    vendas.filter(v => v.clienteId).map(v => v.clienteId)
+    vendas
+      .filter(v => v.clienteId)
+      .map(v => v.clienteId)
   );
 
   return {
@@ -1329,14 +1998,29 @@ function criarResumoLoja(loja) {
 }
 
 function preencherPainel(prefixo, resumo) {
-  $(prefixo + 'Faturamento').textContent = dinheiro(resumo.faturamento);
-  $(prefixo + 'Custos').textContent = dinheiro(resumo.custos);
-  $(prefixo + 'Taxas').textContent = dinheiro(resumo.taxas);
-  $(prefixo + 'Lucro').textContent = dinheiro(resumo.lucro);
-  $(prefixo + 'Recebido').textContent = dinheiro(resumo.recebido);
-  $(prefixo + 'AReceber').textContent = dinheiro(resumo.aReceber);
-  $(prefixo + 'Vendas').textContent = resumo.quantidadeVendas;
-  $(prefixo + 'Clientes').textContent = resumo.quantidadeClientes;
+  $(prefixo + 'Faturamento').textContent =
+    dinheiro(resumo.faturamento);
+
+  $(prefixo + 'Custos').textContent =
+    dinheiro(resumo.custos);
+
+  $(prefixo + 'Taxas').textContent =
+    dinheiro(resumo.taxas);
+
+  $(prefixo + 'Lucro').textContent =
+    dinheiro(resumo.lucro);
+
+  $(prefixo + 'Recebido').textContent =
+    dinheiro(resumo.recebido);
+
+  $(prefixo + 'AReceber').textContent =
+    dinheiro(resumo.aReceber);
+
+  $(prefixo + 'Vendas').textContent =
+    resumo.quantidadeVendas;
+
+  $(prefixo + 'Clientes').textContent =
+    resumo.quantidadeClientes;
 }
 
 function atualizarPainel() {
@@ -1347,24 +2031,54 @@ function atualizarPainel() {
   preencherPainel('joias', joias);
 
   const total = {
-    faturamento: roupas.faturamento + joias.faturamento,
-    custos: roupas.custos + joias.custos,
-    taxas: roupas.taxas + joias.taxas,
-    lucro: roupas.lucro + joias.lucro,
-    recebido: roupas.recebido + joias.recebido,
-    aReceber: roupas.aReceber + joias.aReceber,
-    quantidadeVendas: roupas.quantidadeVendas + joias.quantidadeVendas,
-    quantidadeClientes: dados.clientes.length
+    faturamento:
+      roupas.faturamento + joias.faturamento,
+
+    custos:
+      roupas.custos + joias.custos,
+
+    taxas:
+      roupas.taxas + joias.taxas,
+
+    lucro:
+      roupas.lucro + joias.lucro,
+
+    recebido:
+      roupas.recebido + joias.recebido,
+
+    aReceber:
+      roupas.aReceber + joias.aReceber,
+
+    quantidadeVendas:
+      roupas.quantidadeVendas + joias.quantidadeVendas,
+
+    quantidadeClientes:
+      dados.clientes.length
   };
 
-  $('totalFaturamento').textContent = dinheiro(total.faturamento);
-  $('totalCustos').textContent = dinheiro(total.custos);
-  $('totalTaxas').textContent = dinheiro(total.taxas);
-  $('totalLucro').textContent = dinheiro(total.lucro);
-  $('totalRecebido').textContent = dinheiro(total.recebido);
-  $('totalAReceber').textContent = dinheiro(total.aReceber);
-  $('quantidadeVendas').textContent = total.quantidadeVendas;
-  $('quantidadeClientes').textContent = total.quantidadeClientes;
+  $('totalFaturamento').textContent =
+    dinheiro(total.faturamento);
+
+  $('totalCustos').textContent =
+    dinheiro(total.custos);
+
+  $('totalTaxas').textContent =
+    dinheiro(total.taxas);
+
+  $('totalLucro').textContent =
+    dinheiro(total.lucro);
+
+  $('totalRecebido').textContent =
+    dinheiro(total.recebido);
+
+  $('totalAReceber').textContent =
+    dinheiro(total.aReceber);
+
+  $('quantidadeVendas').textContent =
+    total.quantidadeVendas;
+
+  $('quantidadeClientes').textContent =
+    total.quantidadeClientes;
 }
 
 /* =========================================
@@ -1396,13 +2110,17 @@ function escapar(valor) {
 }
 
 /* =========================================
-   INICIALIZAÇÃO
+   INICIALIZAÇÃO DO APLICATIVO
 ========================================= */
 
 document.addEventListener('DOMContentLoaded', () => {
-  const existeSenha = !!localStorage.getItem(CHAVE_SENHA);
+  const existeSenha =
+    !!localStorage.getItem(CHAVE_SENHA);
 
-  $('campoConfirmacao').classList.toggle('oculto', existeSenha);
+  $('campoConfirmacao').classList.toggle(
+    'oculto',
+    existeSenha
+  );
 
   $('tituloAcesso').textContent = existeSenha
     ? 'Acesso protegido'
@@ -1425,13 +2143,96 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   $('senha').addEventListener('keydown', event => {
-    if (event.key === 'Enter') $('botaoAcesso').click();
+    if (event.key === 'Enter') {
+      $('botaoAcesso').click();
+    }
   });
 
   $('confirmacao').addEventListener('keydown', event => {
-    if (event.key === 'Enter') $('botaoAcesso').click();
+    if (event.key === 'Enter') {
+      $('botaoAcesso').click();
+    }
   });
 
-  $('vendaData').value = new Date().toLocaleDateString('en-CA');
-  $('pagamentoData').value = new Date().toLocaleDateString('en-CA');
+  $('vendaData').value =
+    new Date().toLocaleDateString('en-CA');
+
+  $('pagamentoData').value =
+    new Date().toLocaleDateString('en-CA');
+});
+
+/* =========================================
+   INICIALIZAÇÃO DO SUPABASE
+========================================= */
+
+document.addEventListener('DOMContentLoaded', async () => {
+  $('botaoCriarContaNuvem').addEventListener(
+    'click',
+    dsCriarContaNuvem
+  );
+
+  $('botaoEntrarNuvem').addEventListener(
+    'click',
+    dsEntrarNuvem
+  );
+
+  $('botaoSairNuvem').addEventListener(
+    'click',
+    dsSairNuvem
+  );
+
+  if (!dsInicializarSupabase()) return;
+
+  try {
+    const { data, error } =
+      await dsSupabase.auth.getSession();
+
+    if (error) throw error;
+
+    if (data.session) {
+      dsUsuarioNuvem = data.session.user;
+
+      await dsBuscarRegistroNuvem();
+
+      dsAtualizarBotoesNuvem();
+      dsPrepararAcessoComNuvem();
+
+      dsStatusNuvem(
+        'Conta da nuvem reconectada automaticamente.'
+      );
+
+    } else {
+      dsStatusNuvem(
+        'Conecte sua conta para ativar a sincronização.'
+      );
+    }
+
+    dsSupabase.auth.onAuthStateChange(
+      (evento, session) => {
+        if (evento === 'SIGNED_OUT') {
+          dsUsuarioNuvem = null;
+          dsRegistroNuvem = null;
+
+          dsAtualizarBotoesNuvem();
+        }
+
+        if (session && session.user) {
+          dsUsuarioNuvem = session.user;
+
+          dsAtualizarBotoesNuvem();
+        }
+      }
+    );
+
+  } catch (erro) {
+    console.error(
+      'Erro ao inicializar conta da nuvem:',
+      erro
+    );
+
+    dsStatusNuvem(
+      'Não foi possível verificar a conta da nuvem.',
+      true
+    );
+  }
 });
