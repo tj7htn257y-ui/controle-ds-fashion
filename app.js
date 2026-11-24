@@ -20,6 +20,7 @@ let clienteDetalhadoId = null;
 let salvamentoEmAndamento = Promise.resolve();
 let sincronizacaoEmAndamento = false;
 let carregandoNuvem = false;
+let envioNuvemPendente = false;
 
 let dados = {
   clientes: [],
@@ -45,7 +46,7 @@ const gerarId = () =>
   Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
 
 function mostrarMensagem(texto) {
-  $('mensagem').textContent = texto;
+  if ($('mensagem')) $('mensagem').textContent = texto;
 }
 
 function mostrarStatusNuvem(texto) {
@@ -53,15 +54,24 @@ function mostrarStatusNuvem(texto) {
 }
 
 function atualizarBotoesNuvem() {
-  const sessao = supabaseClient?.auth?.getSession;
-  if (!sessao) return;
+  if (!supabaseClient) return;
 
-  supabaseClient.auth.getSession().then(({ data }) => {
+  supabaseClient.auth.getSession().then(({ data, error }) => {
+    if (error) return;
+
     const conectado = !!data.session;
 
-    $('botaoCriarContaNuvem').classList.toggle('oculto', conectado);
-    $('botaoEntrarNuvem').classList.toggle('oculto', conectado);
-    $('botaoSairNuvem').classList.toggle('oculto', !conectado);
+    if ($('botaoCriarContaNuvem')) {
+      $('botaoCriarContaNuvem').classList.toggle('oculto', conectado);
+    }
+
+    if ($('botaoEntrarNuvem')) {
+      $('botaoEntrarNuvem').classList.toggle('oculto', conectado);
+    }
+
+    if ($('botaoSairNuvem')) {
+      $('botaoSairNuvem').classList.toggle('oculto', !conectado);
+    }
 
     if (conectado) {
       mostrarStatusNuvem(
@@ -240,7 +250,11 @@ async function obterRegistroNuvem() {
 async function enviarDadosNuvem() {
   if (!supabaseClient || !chaveCriptografia || !metadadosSenha) return;
 
-  const { data: sessaoData } = await supabaseClient.auth.getSession();
+  const { data: sessaoData, error: erroSessao } =
+    await supabaseClient.auth.getSession();
+
+  if (erroSessao) throw erroSessao;
+
   const sessao = sessaoData.session;
 
   if (!sessao) return;
@@ -261,6 +275,8 @@ async function enviarDadosNuvem() {
     .upsert(payload, { onConflict: 'user_id' });
 
   if (error) throw error;
+
+  envioNuvemPendente = false;
 
   mostrarStatusNuvem(
     'Sincronização concluída em ' +
@@ -388,7 +404,24 @@ async function sincronizarComNuvem() {
     );
 
   } finally {
+    carregandoNuvem = false;
     sincronizacaoEmAndamento = false;
+
+    if (envioNuvemPendente && chaveCriptografia && supabaseClient) {
+      try {
+        const { data } = await supabaseClient.auth.getSession();
+
+        if (data.session) {
+          await enviarDadosNuvem();
+        }
+      } catch (erro) {
+        console.error('Erro ao concluir envio pendente:', erro);
+
+        mostrarStatusNuvem(
+          'Dados salvos no aparelho. Envio pendente: ' + erro.message
+        );
+      }
+    }
   }
 }
 
@@ -487,24 +520,40 @@ async function salvarDados() {
       await salvarLocalSemNuvem();
 
       if (
-        !carregandoNuvem &&
-        supabaseClient &&
-        !sincronizacaoEmAndamento
+        carregandoNuvem ||
+        !supabaseClient
       ) {
-        const { data } = await supabaseClient.auth.getSession();
+        return;
+      }
 
-        if (data.session) {
-          try {
-            await enviarDadosNuvem();
-          } catch (erro) {
-            console.error('Erro ao enviar dados para a nuvem:', erro);
+      const { data, error } = await supabaseClient.auth.getSession();
 
-            mostrarStatusNuvem(
-              'Dados salvos no aparelho. Falha ao sincronizar: ' +
-              erro.message
-            );
-          }
-        }
+      if (error) {
+        console.error('Erro ao verificar sessão:', error);
+        return;
+      }
+
+      if (!data.session) return;
+
+      if (sincronizacaoEmAndamento) {
+        envioNuvemPendente = true;
+        mostrarStatusNuvem(
+          'Dados salvos no aparelho. Envio para a nuvem aguardando sincronização.'
+        );
+        return;
+      }
+
+      try {
+        await enviarDadosNuvem();
+      } catch (erro) {
+        console.error('Erro ao enviar dados para a nuvem:', erro);
+
+        envioNuvemPendente = true;
+
+        mostrarStatusNuvem(
+          'Dados salvos no aparelho. Falha ao sincronizar: ' +
+          erro.message
+        );
       }
     });
 
@@ -890,16 +939,16 @@ function atualizarClientes() {
         <strong>${escapar(c.nome)}</strong>
         <button type="button"
           style="margin-top:6px;padding:7px 10px;font-size:12px"
-          onclick="abrirDetalheCliente('${c.id}')">
+          onclick="abrirDetalheCliente('${escapar(c.id)}')">
           Dívidas
         </button>
       </td>
       <td>${escapar(c.telefone || '-')}</td>
       <td>
         <div class="acoes">
-          <button type="button" onclick="editarCliente('${c.id}')">Editar</button>
+          <button type="button" onclick="editarCliente('${escapar(c.id)}')">Editar</button>
           <button type="button" class="perigo"
-            onclick="excluirCliente('${c.id}')">Excluir</button>
+            onclick="excluirCliente('${escapar(c.id)}')">Excluir</button>
         </div>
       </td>`;
 
@@ -1064,8 +1113,8 @@ function obterResumoCliente(clienteId) {
     0
   );
 
-  const totalPago = calculo.pagamentos.reduce(
-    (s, p) => s + numero(p.valor),
+  const totalPago = calculo.alocacoes.reduce(
+    (s, a) => s + a.valor,
     0
   );
 
@@ -1210,9 +1259,9 @@ function atualizarDetalheCliente() {
         <td>${dinheiro(liquido)}</td>
         <td>
           <div class="acoes">
-            <button type="button" onclick="editarPagamento('${p.id}')">Editar</button>
+            <button type="button" onclick="editarPagamento('${escapar(p.id)}')">Editar</button>
             <button type="button" class="perigo"
-              onclick="excluirPagamento('${p.id}')">Excluir</button>
+              onclick="excluirPagamento('${escapar(p.id)}')">Excluir</button>
           </div>
         </td>`;
 
@@ -1446,13 +1495,13 @@ function atualizarProdutos() {
     const tr = document.createElement('tr');
 
     tr.innerHTML = `
-      <td>${nomeLoja(p.loja)}</td>
+      <td>${escapar(nomeLoja(p.loja))}</td>
       <td>${escapar(p.nome)}</td>
       <td>
         <div class="acoes">
-          <button type="button" onclick="editarProduto('${p.id}')">Editar</button>
+          <button type="button" onclick="editarProduto('${escapar(p.id)}')">Editar</button>
           <button type="button" class="perigo"
-            onclick="excluirProduto('${p.id}')">Excluir</button>
+            onclick="excluirProduto('${escapar(p.id)}')">Excluir</button>
         </div>
       </td>`;
 
@@ -1712,7 +1761,7 @@ function atualizarVendas() {
 
     tr.innerHTML = `
       <td>${escapar(formatarData(v.data))}</td>
-      <td>${nomeLoja(v.loja)}</td>
+      <td>${escapar(nomeLoja(v.loja))}</td>
       <td>${escapar(v.descricao)}</td>
       <td>${dinheiro(v.valor)}</td>
       <td>${dinheiro(numero(v.taxaValor))}</td>
@@ -1720,9 +1769,9 @@ function atualizarVendas() {
       <td>${vendaPendente(v) ? 'A receber' : 'Recebido'}</td>
       <td>
         <div class="acoes">
-          <button type="button" onclick="editarVenda('${v.id}')">Editar</button>
+          <button type="button" onclick="editarVenda('${escapar(v.id)}')">Editar</button>
           <button type="button" class="perigo"
-            onclick="excluirVenda('${v.id}')">Excluir</button>
+            onclick="excluirVenda('${escapar(v.id)}')">Excluir</button>
         </div>
       </td>`;
 
