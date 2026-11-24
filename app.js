@@ -127,7 +127,7 @@ async function dsBuscarRegistroNuvem() {
 
   const { data, error } = await dsSupabase
     .from('ds_fashion_cloud')
-    .select('user_id,password_meta_data,encrypted_data,update_at')
+    .select('user_id,password_metadata,encrypted_data,updated_at')
     .eq('user_id', dsUsuarioNuvem.id)
     .maybeSingle();
 
@@ -290,7 +290,7 @@ async function dsSairNuvem() {
 ========================================= */
 
 function dsPrepararAcessoComNuvem() {
-  if (!dsRegistroNuvem || !dsRegistroNuvem.password_meta_data) {
+  if (!dsRegistroNuvem || !dsRegistroNuvem.password_metadata) {
     return;
   }
 
@@ -299,7 +299,7 @@ function dsPrepararAcessoComNuvem() {
   if (!senhaLocal) {
     localStorage.setItem(
       CHAVE_SENHA,
-      JSON.stringify(dsRegistroNuvem.password_meta_data)
+      JSON.stringify(dsRegistroNuvem.password_metadata)
     );
 
     $('campoConfirmacao').classList.add('oculto');
@@ -335,9 +335,9 @@ async function dsSincronizarNuvem(registroCriptografado) {
     .from('ds_fashion_cloud')
     .upsert({
       user_id: dsUsuarioNuvem.id,
-      password_meta_data: registroSenha,
+      password_metadata: registroSenha,
       encrypted_data: registroDados,
-      update_at: atualizado
+      updated_at: atualizado
     }, {
       onConflict: 'user_id'
     });
@@ -346,9 +346,9 @@ async function dsSincronizarNuvem(registroCriptografado) {
 
   dsRegistroNuvem = {
     user_id: dsUsuarioNuvem.id,
-    password_meta_data: registroSenha,
+    password_metadata: registroSenha,
     encrypted_data: registroDados,
-    update_at: atualizado
+    updated_at: atualizado
   };
 
   dsStatusNuvem(
@@ -389,7 +389,7 @@ async function carregarDados() {
             } catch (_) {}
           }
 
-          const dataRemota = dsRegistroNuvem.update_at;
+          const dataRemota = dsRegistroNuvem.updated_at;
 
           if (
             dataLocal &&
