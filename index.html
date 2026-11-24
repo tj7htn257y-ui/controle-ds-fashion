@@ -58,6 +58,9 @@ th{color:#492d59;background:#faf8fb}
 .painel-nuvem{border:1px solid #e7dfea;border-radius:12px;padding:14px;margin-top:18px}
 .painel-nuvem h3{margin-top:0}
 #statusNuvem{font-size:13px;line-height:1.5;margin:10px 0;color:#716779}
+#painelComprasCliente{background:white;border-radius:10px;padding:12px;margin:14px 0}
+#painelComprasCliente h3{margin-top:0}
+#painelBackup{margin:12px;padding:14px;border-radius:12px;background:#f1edf5;color:#24152f}
 @media(min-width:650px){
  .grid{grid-template-columns:repeat(3,minmax(0,1fr))}
  .metricas{grid-template-columns:repeat(4,minmax(0,1fr))}
@@ -66,6 +69,7 @@ th{color:#492d59;background:#faf8fb}
 </head>
 
 <body>
+
 <header>
 <h1>Controle DS Fashion</h1>
 <p>Gestão inteligente das suas lojas</p>
@@ -74,6 +78,7 @@ th{color:#492d59;background:#faf8fb}
 <main>
 
 <section id="telaAcesso" class="card acesso">
+
 <h2 id="tituloAcesso">Bem-vindo!</h2>
 <p id="descricaoAcesso">Prepare seu acesso pessoal.</p>
 
@@ -86,13 +91,19 @@ th{color:#492d59;background:#faf8fb}
 </div>
 
 <button id="botaoAcesso" type="button">Continuar</button>
+
 <p id="mensagem"></p>
 
 <div class="painel-nuvem">
+
 <h3>☁️ Conta e sincronização</h3>
-<p class="aviso">Entre ou crie sua conta para permitir que os dados criptografados sejam sincronizados com o Supabase e acessados em outros aparelhos.</p>
+
+<p class="aviso">
+Entre ou crie sua conta para permitir que os dados criptografados sejam sincronizados com o Supabase e acessados em outros aparelhos.
+</p>
 
 <label for="emailNuvem">E-mail da conta</label>
+
 <input
  id="emailNuvem"
  type="email"
@@ -102,6 +113,7 @@ th{color:#492d59;background:#faf8fb}
 >
 
 <label for="senhaNuvem">Senha da conta Supabase</label>
+
 <input
  id="senhaNuvem"
  type="password"
@@ -109,116 +121,312 @@ th{color:#492d59;background:#faf8fb}
  placeholder="Crie ou digite sua senha da nuvem"
 >
 
-<button id="botaoCriarContaNuvem" type="button">Criar conta na nuvem</button>
-<button id="botaoEntrarNuvem" type="button" style="margin-top:8px">Entrar na nuvem</button>
-<button id="botaoSairNuvem" type="button" class="secundario oculto" style="margin-top:8px">Sair da conta da nuvem</button>
+<button id="botaoCriarContaNuvem" type="button">
+Criar conta na nuvem
+</button>
 
-<p id="statusNuvem">Aguardando conexão com a nuvem.</p>
+<button id="botaoEntrarNuvem" type="button" style="margin-top:8px">
+Entrar na nuvem
+</button>
+
+<button id="botaoSairNuvem" type="button" class="secundario oculto" style="margin-top:8px">
+Sair da conta da nuvem
+</button>
+
+<p id="statusNuvem">
+Aguardando conexão com a nuvem.
+</p>
+
 </div>
 
-<p class="aviso">A senha do aplicativo protege seus dados por criptografia local. A senha da conta Supabase é usada somente para autenticar sua conta na nuvem. São senhas diferentes.</p>
+<p class="aviso">
+A senha do aplicativo protege seus dados por criptografia local. A senha da conta Supabase é usada somente para autenticar sua conta na nuvem. São senhas diferentes.
+</p>
+
 </section>
 
 <div id="aplicativo" class="oculto">
 
 <nav>
-<button class="ativo" onclick="abrirSecao('geral',this)">Painel geral</button>
-<button onclick="abrirSecao('clientes',this)">Clientes</button>
-<button onclick="abrirSecao('produtos',this)">Produtos</button>
-<button onclick="abrirSecao('vendas',this)">Lançar vendas</button>
-<button onclick="abrirSecao('historico',this)">Histórico</button>
+
+<button class="ativo" onclick="abrirSecao('geral',this)">
+Painel geral
+</button>
+
+<button onclick="abrirSecao('clientes',this)">
+Clientes
+</button>
+
+<button onclick="abrirSecao('produtos',this)">
+Produtos
+</button>
+
+<button onclick="abrirSecao('vendas',this)">
+Lançar vendas
+</button>
+
+<button onclick="abrirSecao('historico',this)">
+Histórico
+</button>
+
 </nav>
 
+<!-- PAINEL GERAL -->
+
 <section id="geral" class="card secao ativa">
+
 <h2>Painéis gerais</h2>
-<p class="aviso">Acompanhe cada loja separadamente e também o resultado consolidado.</p>
+
+<p class="aviso">
+Acompanhe cada loja separadamente e também o resultado consolidado.
+</p>
 
 <div class="painel-loja">
+
 <h3>Loja de Roupas</h3>
+
 <div class="metricas">
-<div class="metrica"><small>Faturamento</small><strong id="roupasFaturamento">R$ 0,00</strong></div>
-<div class="metrica"><small>Custo dos produtos</small><strong id="roupasCustos">R$ 0,00</strong></div>
-<div class="metrica"><small>Taxas de cartão</small><strong id="roupasTaxas">R$ 0,00</strong></div>
-<div class="metrica lucro"><small>Lucro real</small><strong id="roupasLucro">R$ 0,00</strong></div>
-<div class="metrica"><small>Já recebido</small><strong id="roupasRecebido">R$ 0,00</strong></div>
-<div class="metrica"><small>A receber</small><strong id="roupasAReceber">R$ 0,00</strong></div>
-<div class="metrica"><small>Total de vendas</small><strong id="roupasVendas">0</strong></div>
-<div class="metrica"><small>Clientes cadastrados</small><strong id="roupasClientes">0</strong></div>
+
+<div class="metrica">
+<small>Faturamento</small>
+<strong id="roupasFaturamento">R$ 0,00</strong>
+</div>
+
+<div class="metrica">
+<small>Custo dos produtos</small>
+<strong id="roupasCustos">R$ 0,00</strong>
+</div>
+
+<div class="metrica">
+<small>Taxas de cartão</small>
+<strong id="roupasTaxas">R$ 0,00</strong>
+</div>
+
+<div class="metrica lucro">
+<small>Lucro real</small>
+<strong id="roupasLucro">R$ 0,00</strong>
+</div>
+
+<div class="metrica">
+<small>Já recebido</small>
+<strong id="roupasRecebido">R$ 0,00</strong>
+</div>
+
+<div class="metrica">
+<small>A receber</small>
+<strong id="roupasAReceber">R$ 0,00</strong>
+</div>
+
+<div class="metrica">
+<small>Total de vendas</small>
+<strong id="roupasVendas">0</strong>
+</div>
+
+<div class="metrica">
+<small>Clientes cadastrados</small>
+<strong id="roupasClientes">0</strong>
+</div>
+
 </div>
 </div>
 
 <div class="painel-loja">
+
 <h3>Loja de Joias</h3>
+
 <div class="metricas">
-<div class="metrica"><small>Faturamento</small><strong id="joiasFaturamento">R$ 0,00</strong></div>
-<div class="metrica"><small>Custo dos produtos</small><strong id="joiasCustos">R$ 0,00</strong></div>
-<div class="metrica"><small>Taxas de cartão</small><strong id="joiasTaxas">R$ 0,00</strong></div>
-<div class="metrica lucro"><small>Lucro real</small><strong id="joiasLucro">R$ 0,00</strong></div>
-<div class="metrica"><small>Já recebido</small><strong id="joiasRecebido">R$ 0,00</strong></div>
-<div class="metrica"><small>A receber</small><strong id="joiasAReceber">R$ 0,00</strong></div>
-<div class="metrica"><small>Total de vendas</small><strong id="joiasVendas">0</strong></div>
-<div class="metrica"><small>Clientes cadastrados</small><strong id="joiasClientes">0</strong></div>
+
+<div class="metrica">
+<small>Faturamento</small>
+<strong id="joiasFaturamento">R$ 0,00</strong>
+</div>
+
+<div class="metrica">
+<small>Custo dos produtos</small>
+<strong id="joiasCustos">R$ 0,00</strong>
+</div>
+
+<div class="metrica">
+<small>Taxas de cartão</small>
+<strong id="joiasTaxas">R$ 0,00</strong>
+</div>
+
+<div class="metrica lucro">
+<small>Lucro real</small>
+<strong id="joiasLucro">R$ 0,00</strong>
+</div>
+
+<div class="metrica">
+<small>Já recebido</small>
+<strong id="joiasRecebido">R$ 0,00</strong>
+</div>
+
+<div class="metrica">
+<small>A receber</small>
+<strong id="joiasAReceber">R$ 0,00</strong>
+</div>
+
+<div class="metrica">
+<small>Total de vendas</small>
+<strong id="joiasVendas">0</strong>
+</div>
+
+<div class="metrica">
+<small>Clientes cadastrados</small>
+<strong id="joiasClientes">0</strong>
+</div>
+
 </div>
 </div>
 
 <div class="painel-loja">
+
 <h3>Painel consolidado — as duas lojas</h3>
+
 <div class="metricas">
-<div class="metrica"><small>Faturamento</small><strong id="totalFaturamento">R$ 0,00</strong></div>
-<div class="metrica"><small>Custo dos produtos</small><strong id="totalCustos">R$ 0,00</strong></div>
-<div class="metrica"><small>Taxas de cartão</small><strong id="totalTaxas">R$ 0,00</strong></div>
-<div class="metrica lucro"><small>Lucro real</small><strong id="totalLucro">R$ 0,00</strong></div>
-<div class="metrica"><small>Já recebido</small><strong id="totalRecebido">R$ 0,00</strong></div>
-<div class="metrica"><small>A receber</small><strong id="totalAReceber">R$ 0,00</strong></div>
-<div class="metrica"><small>Total de vendas</small><strong id="quantidadeVendas">0</strong></div>
-<div class="metrica"><small>Clientes cadastrados</small><strong id="quantidadeClientes">0</strong></div>
+
+<div class="metrica">
+<small>Faturamento</small>
+<strong id="totalFaturamento">R$ 0,00</strong>
+</div>
+
+<div class="metrica">
+<small>Custo dos produtos</small>
+<strong id="totalCustos">R$ 0,00</strong>
+</div>
+
+<div class="metrica">
+<small>Taxas de cartão</small>
+<strong id="totalTaxas">R$ 0,00</strong>
+</div>
+
+<div class="metrica lucro">
+<small>Lucro real</small>
+<strong id="totalLucro">R$ 0,00</strong>
+</div>
+
+<div class="metrica">
+<small>Já recebido</small>
+<strong id="totalRecebido">R$ 0,00</strong>
+</div>
+
+<div class="metrica">
+<small>A receber</small>
+<strong id="totalAReceber">R$ 0,00</strong>
+</div>
+
+<div class="metrica">
+<small>Total de vendas</small>
+<strong id="quantidadeVendas">0</strong>
+</div>
+
+<div class="metrica">
+<small>Clientes cadastrados</small>
+<strong id="quantidadeClientes">0</strong>
+</div>
+
 </div>
 </div>
 
-<p class="aviso">O lucro real considera o preço de venda menos o custo do produto e as taxas de cartão. Pagamentos de dívidas serão registrados sem duplicar o faturamento das vendas.</p>
+<p class="aviso">
+O lucro real considera o preço de venda menos o custo do produto e as taxas de cartão. Pagamentos de dívidas serão registrados sem duplicar o faturamento das vendas.
+</p>
+
 </section>
 
+<!-- CLIENTES -->
+
 <section id="clientes" class="card secao">
+
 <h2>Cadastro de clientes</h2>
 
 <form id="formCliente">
+
 <input type="hidden" id="clienteId">
+
 <label for="clienteNome">Nome do cliente</label>
 <input id="clienteNome" required placeholder="Nome completo">
+
 <label for="clienteTelefone">Telefone</label>
 <input id="clienteTelefone" placeholder="Telefone ou WhatsApp">
+
 <label for="clienteObservacao">Observações</label>
 <textarea id="clienteObservacao" rows="2" placeholder="Informações adicionais"></textarea>
-<button type="submit" id="botaoCliente">Cadastrar cliente</button>
-<button type="button" class="secundario" onclick="limparCliente()">Limpar</button>
+
+<button type="submit" id="botaoCliente">
+Cadastrar cliente
+</button>
+
+<button type="button" class="secundario" onclick="limparCliente()">
+Limpar
+</button>
+
 </form>
 
 <label for="pesquisaCliente">Pesquisar cliente</label>
 <input id="pesquisaCliente" placeholder="Digite o nome ou telefone">
 
 <div class="listas">
+
 <table>
-<thead><tr><th>Cliente</th><th>Telefone</th><th>Ações</th></tr></thead>
+
+<thead>
+<tr>
+<th>Cliente</th>
+<th>Telefone</th>
+<th>Ações</th>
+</tr>
+</thead>
+
 <tbody id="listaClientes"></tbody>
+
 </table>
+
 </div>
+
+<!-- DETALHES FINANCEIROS -->
 
 <div id="detalheCliente" class="detalhe-cliente oculto">
-<h3 id="tituloDetalheCliente">Resumo do cliente</h3>
+
+<h3 id="tituloDetalheCliente">
+Resumo do cliente
+</h3>
+
 <div class="resultado">
-<div class="linha"><strong>Total de dívidas</strong><strong id="clienteTotalDivida">R$ 0,00</strong></div>
-<div class="linha"><strong>Total já pago</strong><strong id="clienteTotalPago">R$ 0,00</strong></div>
-<div class="linha"><strong>Saldo devedor</strong><strong id="clienteSaldoDevedor">R$ 0,00</strong></div>
+
+<div class="linha">
+<strong>Total de dívidas</strong>
+<strong id="clienteTotalDivida">R$ 0,00</strong>
 </div>
 
+<div class="linha">
+<strong>Total já pago</strong>
+<strong id="clienteTotalPago">R$ 0,00</strong>
+</div>
+
+<div class="linha">
+<strong>Saldo devedor</strong>
+<strong id="clienteSaldoDevedor">R$ 0,00</strong>
+</div>
+
+</div>
+
+<!-- O painel de compras detalhadas é preenchido pelo app.js -->
+
 <h3>Registrar pagamento</h3>
+
 <form id="formPagamento">
+
 <input type="hidden" id="pagamentoId">
+
 <label for="pagamentoData">Data do pagamento</label>
 <input id="pagamentoData" type="date" required>
+
 <label for="pagamentoValor">Valor pago (R$)</label>
 <input id="pagamentoValor" type="number" min="0.01" step="0.01" required placeholder="0,00">
+
 <label for="pagamentoMetodo">Forma de pagamento</label>
+
 <select id="pagamentoMetodo" required>
 <option value="Dinheiro">Dinheiro</option>
 <option value="Pix">Pix</option>
@@ -226,122 +434,245 @@ th{color:#492d59;background:#faf8fb}
 <option value="Crédito à vista">Crédito à vista</option>
 <option value="Crédito parcelado">Crédito parcelado</option>
 </select>
+
 <div id="camposTaxaPagamento" class="oculto">
+
 <label for="pagamentoTaxa">Taxa da maquininha (%)</label>
+
 <input id="pagamentoTaxa" type="number" min="0" max="100" step="0.01" value="0">
+
 <div class="resultado">
-<div class="linha"><span>Taxa descontada</span><strong id="pagamentoTaxaValor">R$ 0,00</strong></div>
-<div class="linha"><span>Valor líquido recebido</span><strong id="pagamentoLiquido">R$ 0,00</strong></div>
+
+<div class="linha">
+<span>Taxa descontada</span>
+<strong id="pagamentoTaxaValor">R$ 0,00</strong>
+</div>
+
+<div class="linha">
+<span>Valor líquido recebido</span>
+<strong id="pagamentoLiquido">R$ 0,00</strong>
+</div>
+
 </div>
 </div>
+
 <label for="pagamentoObservacao">Observações</label>
+
 <textarea id="pagamentoObservacao" rows="2" placeholder="Observações opcionais"></textarea>
-<button type="submit" id="botaoPagamento">Registrar pagamento</button>
-<button type="button" class="secundario" onclick="limparPagamento()">Limpar</button>
+
+<button type="submit" id="botaoPagamento">
+Registrar pagamento
+</button>
+
+<button type="button" class="secundario" onclick="limparPagamento()">
+Limpar
+</button>
+
 </form>
 
 <h3>Histórico de pagamentos</h3>
+
 <div class="listas">
+
 <table>
-<thead><tr><th>Data</th><th>Valor</th><th>Forma</th><th>Taxa</th><th>Líquido</th><th>Ações</th></tr></thead>
+
+<thead>
+<tr>
+<th>Data</th>
+<th>Valor</th>
+<th>Forma</th>
+<th>Taxa</th>
+<th>Líquido</th>
+<th>Ações</th>
+</tr>
+</thead>
+
 <tbody id="listaPagamentos"></tbody>
+
 </table>
+
 </div>
-<button type="button" class="secundario" onclick="fecharDetalheCliente()">Fechar detalhes</button>
+
+<button type="button" class="secundario" onclick="fecharDetalheCliente()">
+Fechar detalhes
+</button>
+
 </div>
+
 </section>
 
+<!-- PRODUTOS -->
+
 <section id="produtos" class="card secao">
+
 <h2>Cadastro de produtos</h2>
+
 <form id="formProduto">
+
 <input type="hidden" id="produtoId">
+
 <label for="produtoLoja">Loja</label>
+
 <select id="produtoLoja" required>
 <option value="roupas">Loja de Roupas</option>
 <option value="joias">Loja de Joias</option>
 </select>
+
 <label for="produtoNome">Nome do produto</label>
+
 <input id="produtoNome" required placeholder="Descrição do produto">
-<button type="submit" id="botaoProduto">Cadastrar produto</button>
-<button type="button" class="secundario" onclick="limparProduto()">Limpar</button>
+
+<button type="submit" id="botaoProduto">
+Cadastrar produto
+</button>
+
+<button type="button" class="secundario" onclick="limparProduto()">
+Limpar
+</button>
+
 </form>
+
 <div class="listas">
+
 <table>
-<thead><tr><th>Loja</th><th>Produto</th><th>Ações</th></tr></thead>
+
+<thead>
+<tr>
+<th>Loja</th>
+<th>Produto</th>
+<th>Ações</th>
+</tr>
+</thead>
+
 <tbody id="listaProdutos"></tbody>
+
 </table>
+
 </div>
+
 </section>
 
+<!-- VENDAS -->
+
 <section id="vendas" class="card secao">
+
 <h2>Lançamento de vendas</h2>
+
 <form id="formVenda">
+
 <input type="hidden" id="vendaId">
 
 <label for="vendaLoja">Loja da venda</label>
+
 <select id="vendaLoja" required>
 <option value="roupas">Loja de Roupas</option>
 <option value="joias">Loja de Joias</option>
 </select>
 
 <label for="vendaData">Data da venda</label>
+
 <input id="vendaData" type="date" required>
 
 <label for="vendaCliente">Cliente</label>
+
 <select id="vendaCliente">
 <option value="">Venda sem cliente cadastrado</option>
 </select>
-<button type="button" class="secundario" onclick="alternarCadastroRapido('cadastroRapidoCliente')">+ Cadastrar cliente nesta venda</button>
+
+<button type="button" class="secundario" onclick="alternarCadastroRapido('cadastroRapidoCliente')">
++ Cadastrar cliente nesta venda
+</button>
 
 <div id="cadastroRapidoCliente" class="resultado oculto">
+
 <h3>Novo cliente</h3>
+
 <label for="novoClienteNome">Nome do cliente</label>
 <input id="novoClienteNome" placeholder="Nome completo">
+
 <label for="novoClienteTelefone">Telefone</label>
 <input id="novoClienteTelefone" placeholder="Telefone ou WhatsApp">
+
 <label for="novoClienteObservacao">Observações</label>
 <textarea id="novoClienteObservacao" rows="2" placeholder="Informações adicionais"></textarea>
-<button type="button" onclick="salvarClienteRapido()">Salvar e selecionar cliente</button>
-<button type="button" class="secundario" onclick="alternarCadastroRapido('cadastroRapidoCliente')">Cancelar</button>
+
+<button type="button" onclick="salvarClienteRapido()">
+Salvar e selecionar cliente
+</button>
+
+<button type="button" class="secundario" onclick="alternarCadastroRapido('cadastroRapidoCliente')">
+Cancelar
+</button>
+
 </div>
 
 <label for="vendaDescricao">Descrição do produto</label>
+
 <input id="vendaDescricao" placeholder="Digite o nome ou descrição do produto">
 
 <div class="grid">
+
 <div>
+
 <label for="vendaCusto">Valor de custo (R$)</label>
+
 <input id="vendaCusto" type="number" min="0" step="0.01" required placeholder="0,00">
+
 </div>
+
 <div>
+
 <label for="vendaValor">Valor de venda (R$)</label>
+
 <input id="vendaValor" type="number" min="0" step="0.01" required placeholder="0,00">
+
 </div>
+
 </div>
 
 <div class="resultado">
-<div class="linha"><span>Lucro bruto</span><strong id="vendaLucroBruto">R$ 0,00</strong></div>
-<div class="linha"><span>Margem sobre a venda</span><strong id="vendaMargem">0,00%</strong></div>
+
+<div class="linha">
+<span>Lucro bruto</span>
+<strong id="vendaLucroBruto">R$ 0,00</strong>
+</div>
+
+<div class="linha">
+<span>Margem sobre a venda</span>
+<strong id="vendaMargem">0,00%</strong>
+</div>
+
 </div>
 
 <label for="vendaPagamento">Forma de pagamento</label>
+
 <select id="vendaPagamento">
+
 <option value="Dinheiro">Dinheiro</option>
 <option value="Pix">Pix</option>
 <option value="Débito">Cartão de débito</option>
 <option value="Crédito à vista">Crédito à vista</option>
 <option value="Crédito parcelado">Crédito parcelado</option>
 <option value="Fiado">Fiado</option>
+
 </select>
 
 <div class="grid">
+
 <div>
+
 <label for="vendaTaxa">Taxa da maquininha (%)</label>
+
 <input id="vendaTaxa" type="number" min="0" max="100" step="0.01" value="0">
+
 </div>
+
 <div>
+
 <label for="vendaParcelas">Número de parcelas</label>
+
 <select id="vendaParcelas">
+
 <option value="1">1 vez</option>
 <option value="2">2 vezes</option>
 <option value="3">3 vezes</option>
@@ -354,66 +685,131 @@ th{color:#492d59;background:#faf8fb}
 <option value="10">10 vezes</option>
 <option value="11">11 vezes</option>
 <option value="12">12 vezes</option>
+
 </select>
+
 </div>
+
 </div>
 
 <label for="vendaStatus">Situação do pagamento</label>
+
 <select id="vendaStatus">
 <option value="recebido">Recebido</option>
 <option value="pendente">A receber</option>
 </select>
 
 <div class="resultado">
-<div class="linha"><span>Taxa descontada</span><strong id="vendaTaxaValor">R$ 0,00</strong></div>
-<div class="linha"><span>Valor líquido após taxa</span><strong id="vendaLiquido">R$ 0,00</strong></div>
-<div class="linha"><span>Lucro real</span><strong id="vendaLucroReal">R$ 0,00</strong></div>
+
+<div class="linha">
+<span>Taxa descontada</span>
+<strong id="vendaTaxaValor">R$ 0,00</strong>
+</div>
+
+<div class="linha">
+<span>Valor líquido após taxa</span>
+<strong id="vendaLiquido">R$ 0,00</strong>
+</div>
+
+<div class="linha">
+<span>Lucro real</span>
+<strong id="vendaLucroReal">R$ 0,00</strong>
+</div>
+
 </div>
 
 <label for="vendaObservacao">Observações</label>
+
 <textarea id="vendaObservacao" rows="2" placeholder="Observações sobre a venda"></textarea>
 
-<button type="submit" id="botaoVenda">Registrar venda</button>
-<button type="button" class="secundario" onclick="limparVenda()">Limpar</button>
+<button type="submit" id="botaoVenda">
+Registrar venda
+</button>
+
+<button type="button" class="secundario" onclick="limparVenda()">
+Limpar
+</button>
+
 </form>
+
 </section>
 
+<!-- HISTÓRICO -->
+
 <section id="historico" class="card secao">
+
 <h2>Histórico de vendas</h2>
+
 <label for="filtroHistorico">Filtrar por loja</label>
+
 <select id="filtroHistorico">
+
 <option value="todas">Todas as lojas</option>
 <option value="roupas">Loja de Roupas</option>
 <option value="joias">Loja de Joias</option>
+
 </select>
+
 <div class="listas">
+
 <table>
-<thead><tr><th>Data</th><th>Loja</th><th>Produto</th><th>Venda</th><th>Taxa</th><th>Lucro real</th><th>Situação</th><th>Ações</th></tr></thead>
+
+<thead>
+<tr>
+<th>Data</th>
+<th>Loja</th>
+<th>Produto</th>
+<th>Venda</th>
+<th>Taxa</th>
+<th>Lucro real</th>
+<th>Situação</th>
+<th>Ações</th>
+</tr>
+</thead>
+
 <tbody id="listaVendas"></tbody>
+
 </table>
+
 </div>
+
 </section>
+
+<!-- BLOQUEIO -->
 
 <section class="card">
-<button class="secundario" onclick="bloquearAplicativo()">Bloquear aplicativo</button>
-<p class="aviso">Os dados serão armazenados neste aparelho e, quando conectado à conta, sincronizados com segurança com a nuvem. Mantenha também seus backups periódicos.</p>
+
+<button class="secundario" onclick="bloquearAplicativo()">
+Bloquear aplicativo
+</button>
+
+<p class="aviso">
+Os dados serão armazenados neste aparelho e, quando conectado à conta, sincronizados com segurança com a nuvem. Mantenha também seus backups periódicos.
+</p>
+
 </section>
 
 </div>
+
 </main>
 
-<!-- Biblioteca oficial do Supabase -->
+<!-- BIBLIOTECA OFICIAL DO SUPABASE -->
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-<!-- Código principal do aplicativo -->
-<script src="./app.js?v=6"></script>
+<!-- CÓDIGO PRINCIPAL -->
+
+<script src="./app.js?v=7"></script>
+
+<!-- SERVICE WORKER -->
 
 <script>
-if('serviceWorker' in navigator){
- window.addEventListener('load',()=>{
+if ('serviceWorker' in navigator) {
+ window.addEventListener('load', () => {
   navigator.serviceWorker.register('./sw.js').catch(console.error);
  });
 }
 </script>
+
 </body>
 </html>
