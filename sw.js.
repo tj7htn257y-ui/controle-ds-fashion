@@ -1,10 +1,9 @@
-
-const CACHE = 'ds-fashion-v6';
+const CACHE = 'ds-fashion-v7';
 
 const FILES = [
   './',
   './index.html',
-  './app.js',
+  './app.js?v=8',
   './manifest.json'
 ];
 
