@@ -594,7 +594,7 @@ Limpar
 <input id="novoClienteTelefone" placeholder="Telefone ou WhatsApp">
 
 <label for="novoClienteObservacao">Observações</label>
-<textarea id="novoClienteObservacao" rows="2" placeholder="Informações adicionais"></textarea>
+<textarea id="novoClienteObservacao" rows="2" placeholder="Observações adicionais"></textarea>
 
 <button type="button" onclick="salvarClienteRapido()">
 Salvar e selecionar cliente
@@ -806,7 +806,7 @@ Os dados serão armazenados neste aparelho e, quando conectado à conta, sincron
 <script>
 if ('serviceWorker' in navigator) {
  window.addEventListener('load', () => {
-  navigator.serviceWorker.register('./sw.js').catch(console.error);
+  navigator.serviceWorker.register('./sw.js.').catch(console.error);
  });
 }
 </script>
