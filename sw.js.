@@ -1,5 +1,5 @@
 
-const CACHE = 'ds-fashion-v8';
+const CACHE = 'ds-fashion-v9';
 
 const FILES = [
   './',
@@ -8,7 +8,6 @@ const FILES = [
   './manifest.json'
 ];
 
-// Instala a nova versão
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE)
@@ -17,8 +16,6 @@ self.addEventListener('install', event => {
   );
 });
 
-// Ativa a nova versão e remove somente caches antigos
-// pertencentes ao Controle DS Fashion
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
@@ -34,8 +31,6 @@ self.addEventListener('activate', event => {
   );
 });
 
-// Primeiro tenta acessar a internet.
-// Sem conexão, utiliza os arquivos armazenados.
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
 
@@ -56,18 +51,13 @@ self.addEventListener('fetch', event => {
         return response;
       })
       .catch(async () => {
-        const arquivoSalvo = await caches.match(event.request);
+        const salvo = await caches.match(event.request);
 
-        if (arquivoSalvo) {
-          return arquivoSalvo;
-        }
+        if (salvo) return salvo;
 
         if (event.request.mode === 'navigate') {
-          const paginaOffline = await caches.match('./index.html');
-
-          if (paginaOffline) {
-            return paginaOffline;
-          }
+          const pagina = await caches.match('./index.html');
+          if (pagina) return pagina;
         }
 
         return Response.error();
