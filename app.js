@@ -1,3 +1,4 @@
+'use strict';
 
 const $ = id => document.getElementById(id);
 
@@ -29,12 +30,17 @@ let dados = {
   pagamentos: []
 };
 
+/* =========================================
+   FUNÇÕES BÁSICAS
+========================================= */
+
 const dinheiro = valor => Number(valor || 0).toLocaleString('pt-BR', {
   style: 'currency',
   currency: 'BRL'
 });
 
 const numero = valor => Number(valor || 0);
+
 const centavos = valor => Math.round(numero(valor) * 100);
 
 const percentual = (custo, venda) => {
@@ -52,6 +58,47 @@ function mostrarMensagem(texto) {
 function mostrarStatusNuvem(texto) {
   if ($('statusNuvem')) $('statusNuvem').textContent = texto;
 }
+
+function nomeLoja(loja) {
+  return loja === 'joias' ? 'Joias' : 'Roupas';
+}
+
+function formatarData(data) {
+  if (!data) return '';
+
+  const partes = String(data).split('-');
+
+  return partes.length === 3
+    ? `${partes[2]}/${partes[1]}/${partes[0]}`
+    : data;
+}
+
+function dataHoje() {
+  const agora = new Date();
+  const ano = agora.getFullYear();
+  const mes = String(agora.getMonth() + 1).padStart(2, '0');
+  const dia = String(agora.getDate()).padStart(2, '0');
+
+  return `${ano}-${mes}-${dia}`;
+}
+
+function escapar(valor) {
+  return String(valor ?? '').replace(/[&<>"']/g, caractere => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[caractere]);
+}
+
+function elementoExiste(id) {
+  return !!$(id);
+}
+
+/* =========================================
+   SUPABASE
+========================================= */
 
 function atualizarBotoesNuvem() {
   if (!supabaseClient) return;
@@ -81,10 +128,6 @@ function atualizarBotoesNuvem() {
   });
 }
 
-/* =========================================
-   SUPABASE
-========================================= */
-
 function iniciarSupabase() {
   if (!window.supabase) {
     mostrarStatusNuvem('Biblioteca Supabase indisponível.');
@@ -96,7 +139,7 @@ function iniciarSupabase() {
     SUPABASE_KEY
   );
 
-  supabaseClient.auth.onAuthStateChange((evento, sessao) => {
+  supabaseClient.auth.onAuthStateChange((evento) => {
     atualizarBotoesNuvem();
 
     if (evento === 'SIGNED_IN' && chaveCriptografia) {
@@ -119,9 +162,7 @@ function iniciarSupabase() {
     if (data.session) {
       mostrarStatusNuvem('Conta conectada. Verificando sincronização...');
 
-      if (chaveCriptografia) {
-        sincronizarComNuvem();
-      }
+      if (chaveCriptografia) sincronizarComNuvem();
     }
   });
 }
@@ -156,9 +197,7 @@ async function criarContaNuvem() {
   if (data.session) {
     mostrarStatusNuvem('Conta criada e conectada com sucesso.');
 
-    if (chaveCriptografia) {
-      await sincronizarComNuvem();
-    }
+    if (chaveCriptografia) await sincronizarComNuvem();
   } else {
     mostrarStatusNuvem(
       'Conta criada. Verifique seu e-mail para confirmar o cadastro.'
@@ -200,12 +239,9 @@ async function entrarNuvem() {
   $('senhaNuvem').value = '';
 
   atualizarBotoesNuvem();
-
   mostrarStatusNuvem('Conta conectada.');
 
-  if (chaveCriptografia) {
-    await sincronizarComNuvem();
-  }
+  if (chaveCriptografia) await sincronizarComNuvem();
 }
 
 async function sairNuvem() {
@@ -221,7 +257,10 @@ async function sairNuvem() {
   }
 
   atualizarBotoesNuvem();
-  mostrarStatusNuvem('Conta desconectada. Os dados locais foram preservados.');
+
+  mostrarStatusNuvem(
+    'Conta desconectada. Os dados locais foram preservados.'
+  );
 }
 
 async function obterRegistroNuvem() {
@@ -390,18 +429,14 @@ async function sincronizarComNuvem() {
 
     atualizarTudo();
 
-    mostrarStatusNuvem(
-      'Dados da nuvem carregados com sucesso.'
-    );
+    mostrarStatusNuvem('Dados da nuvem carregados com sucesso.');
 
   } catch (erro) {
     carregandoNuvem = false;
 
     console.error('Erro na sincronização:', erro);
 
-    mostrarStatusNuvem(
-      'Falha na sincronização: ' + erro.message
-    );
+    mostrarStatusNuvem('Falha na sincronização: ' + erro.message);
 
   } finally {
     carregandoNuvem = false;
@@ -411,9 +446,8 @@ async function sincronizarComNuvem() {
       try {
         const { data } = await supabaseClient.auth.getSession();
 
-        if (data.session) {
-          await enviarDadosNuvem();
-        }
+        if (data.session) await enviarDadosNuvem();
+
       } catch (erro) {
         console.error('Erro ao concluir envio pendente:', erro);
 
@@ -519,12 +553,7 @@ async function salvarDados() {
     .then(async () => {
       await salvarLocalSemNuvem();
 
-      if (
-        carregandoNuvem ||
-        !supabaseClient
-      ) {
-        return;
-      }
+      if (carregandoNuvem || !supabaseClient) return;
 
       const { data, error } = await supabaseClient.auth.getSession();
 
@@ -537,9 +566,11 @@ async function salvarDados() {
 
       if (sincronizacaoEmAndamento) {
         envioNuvemPendente = true;
+
         mostrarStatusNuvem(
           'Dados salvos no aparelho. Envio para a nuvem aguardando sincronização.'
         );
+
         return;
       }
 
@@ -687,11 +718,11 @@ async function verificarSenha() {
     metadadosSenha = registro;
 
     await carregarDados();
-
     await entrarNoAplicativo();
 
   } catch (erro) {
     console.error(erro);
+
     chaveCriptografia = null;
     senhaAplicativoAtual = '';
 
@@ -705,6 +736,7 @@ async function entrarNoAplicativo() {
 
   $('senha').value = '';
   $('confirmacao').value = '';
+
   mostrarMensagem('');
 
   criarPainelBackup();
@@ -713,9 +745,7 @@ async function entrarNoAplicativo() {
   if (supabaseClient) {
     const { data } = await supabaseClient.auth.getSession();
 
-    if (data.session) {
-      sincronizarComNuvem();
-    }
+    if (data.session) sincronizarComNuvem();
   }
 }
 
@@ -861,18 +891,6 @@ async function exportarBackup() {
   }
 }
 
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden' && chaveCriptografia) {
-    salvarDados().catch(console.error);
-  }
-});
-
-window.addEventListener('pagehide', () => {
-  if (chaveCriptografia) {
-    salvarDados().catch(console.error);
-  }
-});
-
 /* =========================================
    NAVEGAÇÃO
 ========================================= */
@@ -886,7 +904,7 @@ function abrirSecao(id, botao) {
     btn.classList.remove('ativo');
   });
 
-  $(id).classList.add('ativa');
+  if ($(id)) $(id).classList.add('ativa');
 
   if (botao) botao.classList.add('ativo');
 }
@@ -898,10 +916,9 @@ function atualizarTudo() {
   atualizarPainel();
   atualizarSeletores();
   atualizarMargens();
+  atualizarRanking();
 
-  if (clienteDetalhadoId) {
-    atualizarDetalheCliente();
-  }
+  if (clienteDetalhadoId) atualizarDetalheCliente();
 }
 
 /* =========================================
@@ -1448,12 +1465,24 @@ function limparProduto() {
 }
 
 function atualizarMargens() {
-  const custo = $('produtoCusto') ? numero($('produtoCusto').value) : 0;
-  const venda = $('produtoVenda') ? numero($('produtoVenda').value) : 0;
+  const custoProduto = $('produtoCusto')
+    ? numero($('produtoCusto').value)
+    : 0;
 
-  if ($('margemProduto')) {
-    $('margemProduto').textContent =
-      percentual(custo, venda).toFixed(2).replace('.', ',') + '%';
+  const vendaProduto = $('produtoVenda')
+    ? numero($('produtoVenda').value)
+    : 0;
+
+  if ($('produtoLucro')) {
+    $('produtoLucro').textContent =
+      dinheiro(vendaProduto - custoProduto);
+  }
+
+  if ($('produtoMargem')) {
+    $('produtoMargem').textContent =
+      percentual(custoProduto, vendaProduto)
+        .toFixed(2)
+        .replace('.', ',') + '%';
   }
 
   const custoVenda = numero($('vendaCusto').value);
@@ -1475,6 +1504,8 @@ function atualizarMargens() {
   $('vendaLucroReal').textContent = dinheiro(lucroReal);
 }
 
+$('produtoCusto').addEventListener('input', atualizarMargens);
+$('produtoVenda').addEventListener('input', atualizarMargens);
 $('vendaCusto').addEventListener('input', atualizarMargens);
 $('vendaValor').addEventListener('input', atualizarMargens);
 $('vendaTaxa').addEventListener('input', atualizarMargens);
@@ -1486,8 +1517,9 @@ function atualizarProdutos() {
 
   if (!dados.produtos.length) {
     lista.innerHTML =
-      '<tr><td colspan="3" class="vazio">Nenhum produto cadastrado.</td></tr>';
+      '<tr><td colspan="5" class="vazio">Nenhum produto cadastrado.</td></tr>';
 
+    atualizarSeletores();
     return;
   }
 
@@ -1497,6 +1529,8 @@ function atualizarProdutos() {
     tr.innerHTML = `
       <td>${escapar(nomeLoja(p.loja))}</td>
       <td>${escapar(p.nome)}</td>
+      <td>${dinheiro(p.custo)}</td>
+      <td>${dinheiro(p.venda)}</td>
       <td>
         <div class="acoes">
           <button type="button" onclick="editarProduto('${escapar(p.id)}')">Editar</button>
@@ -1507,6 +1541,8 @@ function atualizarProdutos() {
 
     lista.appendChild(tr);
   });
+
+  atualizarSeletores();
 }
 
 $('formProduto').addEventListener('submit', async event => {
@@ -1519,10 +1555,20 @@ $('formProduto').addEventListener('submit', async event => {
     ...(anterior || {}),
     id: id || gerarId(),
     loja: $('produtoLoja').value,
-    nome: $('produtoNome').value.trim()
+    nome: $('produtoNome').value.trim(),
+    custo: numero($('produtoCusto').value),
+    venda: numero($('produtoVenda').value)
   };
 
-  if (!produto.nome) return;
+  if (!produto.nome) {
+    alert('Informe o nome do produto.');
+    return;
+  }
+
+  if (produto.custo < 0 || produto.venda < 0) {
+    alert('Os valores não podem ser negativos.');
+    return;
+  }
 
   if (id) {
     const indice = dados.produtos.findIndex(p => p.id === id);
@@ -1545,7 +1591,9 @@ function editarProduto(id) {
 
   $('produtoId').value = p.id;
   $('produtoLoja').value = p.loja;
-  $('produtoNome').value = p.nome;
+  $('produtoNome').value = p.nome || '';
+  $('produtoCusto').value = numero(p.custo);
+  $('produtoVenda').value = numero(p.venda);
 
   $('botaoProduto').textContent = 'Salvar alterações';
 
@@ -1626,6 +1674,7 @@ function limparVenda() {
   $('vendaTaxa').value = 0;
   $('vendaStatus').value = 'recebido';
   $('vendaParcelas').value = '1';
+  $('vendaProduto').value = '';
 
   $('botaoVenda').textContent = 'Registrar venda';
 
@@ -1635,6 +1684,8 @@ function limparVenda() {
 
 function atualizarSeletores() {
   const clienteAtual = $('vendaCliente').value;
+  const produtoAtual = $('vendaProduto').value;
+  const lojaVenda = $('vendaLoja').value;
 
   $('vendaCliente').innerHTML =
     '<option value="">Venda sem cliente cadastrado</option>';
@@ -1649,9 +1700,52 @@ function atualizarSeletores() {
   });
 
   $('vendaCliente').value = clienteAtual;
+
+  if ($('vendaProduto')) {
+    $('vendaProduto').innerHTML =
+      '<option value="">Venda sem produto cadastrado</option>';
+
+    dados.produtos
+      .filter(p => p.loja === lojaVenda)
+      .forEach(p => {
+        const option = document.createElement('option');
+
+        option.value = p.id;
+        option.textContent = p.nome;
+
+        $('vendaProduto').appendChild(option);
+      });
+
+    $('vendaProduto').value = produtoAtual;
+  }
 }
 
-$('vendaLoja').addEventListener('change', atualizarSeletores);
+function preencherVendaComProduto() {
+  const id = $('vendaProduto').value;
+
+  if (!id) return;
+
+  const produto = dados.produtos.find(p => p.id === id);
+
+  if (!produto) return;
+
+  $('vendaLoja').value = produto.loja;
+  atualizarSeletores();
+
+  $('vendaProduto').value = produto.id;
+  $('vendaDescricao').value = produto.nome;
+  $('vendaCusto').value = numero(produto.custo);
+  $('vendaValor').value = numero(produto.venda);
+
+  atualizarMargens();
+}
+
+$('vendaProduto').addEventListener('change', preencherVendaComProduto);
+
+$('vendaLoja').addEventListener('change', () => {
+  $('vendaProduto').value = '';
+  atualizarSeletores();
+});
 
 $('vendaPagamento').addEventListener('change', () => {
   if ($('vendaPagamento').value === 'Fiado') {
@@ -1696,11 +1790,14 @@ $('formVenda').addEventListener('submit', async event => {
 
   const taxaValor = valor * taxaPercentual / 100;
 
+  const produtoId = $('vendaProduto').value;
+
   const venda = {
     id: id || gerarId(),
     loja: $('vendaLoja').value,
     data: $('vendaData').value,
     clienteId: $('vendaCliente').value,
+    produtoId: produtoId || '',
     descricao: $('vendaDescricao').value.trim() || 'Venda sem descrição',
     custo,
     valor,
@@ -1713,6 +1810,11 @@ $('formVenda').addEventListener('submit', async event => {
       : $('vendaStatus').value,
     observacao: $('vendaObservacao').value.trim()
   };
+
+  if (!venda.data) {
+    alert('Informe a data da venda.');
+    return;
+  }
 
   if (id) {
     const indice = dados.vendas.findIndex(v => v.id === id);
@@ -1738,11 +1840,15 @@ $('formVenda').addEventListener('submit', async event => {
 function atualizarVendas() {
   const lista = $('listaVendas');
   const filtro = $('filtroHistorico').value;
+  const filtroMes = $('filtroMesHistorico')
+    ? $('filtroMesHistorico').value
+    : '';
 
   lista.innerHTML = '';
 
   const vendas = dados.vendas
     .filter(v => filtro === 'todas' || v.loja === filtro)
+    .filter(v => !filtroMes || (v.data || '').slice(0, 7) === filtroMes)
     .slice()
     .sort((a, b) => (b.data || '').localeCompare(a.data || ''));
 
@@ -1781,6 +1887,10 @@ function atualizarVendas() {
 
 $('filtroHistorico').addEventListener('change', atualizarVendas);
 
+if ($('filtroMesHistorico')) {
+  $('filtroMesHistorico').addEventListener('change', atualizarVendas);
+}
+
 function editarVenda(id) {
   const v = dados.vendas.find(item => item.id === id);
   if (!v) return;
@@ -1792,6 +1902,7 @@ function editarVenda(id) {
 
   $('vendaData').value = v.data || '';
   $('vendaCliente').value = v.clienteId || '';
+  $('vendaProduto').value = v.produtoId || '';
   $('vendaDescricao').value = v.descricao || '';
   $('vendaCusto').value = v.custo;
   $('vendaValor').value = v.valor;
@@ -1824,6 +1935,97 @@ async function excluirVenda(id) {
   await salvarDados();
   atualizarTudo();
 }
+
+/* =========================================
+   RANKING ANUAL DE CLIENTES
+========================================= */
+
+function prepararAnosRanking() {
+  if (!$('anoRanking')) return;
+
+  const seletor = $('anoRanking');
+  const anoAtual = new Date().getFullYear();
+
+  const anosExistentes = new Set([
+    anoAtual,
+    ...dados.vendas
+      .filter(v => v.data)
+      .map(v => Number(v.data.slice(0, 4)))
+  ]);
+
+  const selecionado = seletor.value || String(anoAtual);
+
+  seletor.innerHTML = '';
+
+  [...anosExistentes]
+    .filter(ano => Number.isFinite(ano))
+    .sort((a, b) => b - a)
+    .forEach(ano => {
+      const option = document.createElement('option');
+      option.value = String(ano);
+      option.textContent = String(ano);
+      seletor.appendChild(option);
+    });
+
+  seletor.value = anosExistentes.has(Number(selecionado))
+    ? selecionado
+    : String(anoAtual);
+}
+
+function atualizarRanking() {
+  if (!$('listaRanking')) return;
+
+  prepararAnosRanking();
+
+  const ano = $('anoRanking').value;
+  const loja = $('lojaRanking').value;
+
+  const totais = new Map();
+
+  dados.vendas
+    .filter(v => v.clienteId)
+    .filter(v => (v.data || '').startsWith(ano))
+    .filter(v => loja === 'todas' || v.loja === loja)
+    .forEach(v => {
+      const atual = totais.get(v.clienteId) || 0;
+      totais.set(v.clienteId, atual + numero(v.valor));
+    });
+
+  const ranking = [...totais.entries()]
+    .map(([clienteId, total]) => {
+      const cliente = dados.clientes.find(c => c.id === clienteId);
+
+      return {
+        clienteId,
+        nome: cliente ? cliente.nome : 'Cliente excluído',
+        total
+      };
+    })
+    .sort((a, b) => b.total - a.total);
+
+  const lista = $('listaRanking');
+  lista.innerHTML = '';
+
+  if (!ranking.length) {
+    lista.innerHTML =
+      '<tr><td colspan="3" class="vazio">Nenhuma compra encontrada neste período.</td></tr>';
+    return;
+  }
+
+  ranking.forEach((item, indice) => {
+    const tr = document.createElement('tr');
+
+    tr.innerHTML = `
+      <td>${indice + 1}º</td>
+      <td>${escapar(item.nome)}</td>
+      <td><strong>${dinheiro(item.total)}</strong></td>`;
+
+    lista.appendChild(tr);
+  });
+}
+
+$('anoRanking').addEventListener('change', atualizarRanking);
+$('lojaRanking').addEventListener('change', atualizarRanking);
 
 /* =========================================
    PAINÉIS FINANCEIROS
@@ -1927,45 +2129,20 @@ function atualizarPainel() {
 }
 
 /* =========================================
-   FUNÇÕES AUXILIARES
-========================================= */
-
-function nomeLoja(loja) {
-  return loja === 'joias' ? 'Joias' : 'Roupas';
-}
-
-function formatarData(data) {
-  if (!data) return '';
-
-  const partes = data.split('-');
-
-  return partes.length === 3
-    ? `${partes[2]}/${partes[1]}/${partes[0]}`
-    : data;
-}
-
-function dataHoje() {
-  const agora = new Date();
-  const ano = agora.getFullYear();
-  const mes = String(agora.getMonth() + 1).padStart(2, '0');
-  const dia = String(agora.getDate()).padStart(2, '0');
-
-  return `${ano}-${mes}-${dia}`;
-}
-
-function escapar(valor) {
-  return String(valor ?? '').replace(/[&<>"']/g, caractere => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;'
-  })[caractere]);
-}
-
-/* =========================================
    INICIALIZAÇÃO
 ========================================= */
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && chaveCriptografia) {
+    salvarDados().catch(console.error);
+  }
+});
+
+window.addEventListener('pagehide', () => {
+  if (chaveCriptografia) {
+    salvarDados().catch(console.error);
+  }
+});
 
 document.addEventListener('DOMContentLoaded', () => {
   iniciarSupabase();
@@ -2019,4 +2196,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   $('vendaData').value = dataHoje();
   $('pagamentoData').value = dataHoje();
+
+  prepararAnosRanking();
 });
