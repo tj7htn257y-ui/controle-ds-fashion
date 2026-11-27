@@ -1,10 +1,10 @@
 
-const CACHE = 'ds-fashion-v10';
+const CACHE = 'ds-fashion-v11';
 
 const FILES = [
   './',
   './index.html',
-  './app.js?v=7',
+  './app.js?v=8',
   './manifest.json'
 ];
 
@@ -32,33 +32,56 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  if (event.request.method !== 'GET') return;
+  const request = event.request;
 
-  const url = new URL(event.request.url);
+  if (request.method !== 'GET') return;
 
+  const url = new URL(request.url);
+
+  // Não intercepta requisições externas.
   if (url.origin !== self.location.origin) return;
 
+  // Navegação: tenta a versão atual e usa o arquivo salvo offline.
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then(response => {
+          if (response && response.ok) {
+            const copia = response.clone();
+
+            caches.open(CACHE)
+              .then(cache => cache.put('./index.html', copia));
+          }
+
+          return response;
+        })
+        .catch(async () => {
+          const pagina = await caches.match('./index.html');
+
+          return pagina || Response.error();
+        })
+    );
+
+    return;
+  }
+
+  // Arquivos locais: busca atualização na rede e mantém cópia offline.
   event.respondWith(
-    fetch(event.request)
+    fetch(request)
       .then(response => {
         if (response && response.ok) {
           const copia = response.clone();
 
           caches.open(CACHE)
-            .then(cache => cache.put(event.request, copia));
+            .then(cache => cache.put(request, copia));
         }
 
         return response;
       })
       .catch(async () => {
-        const salvo = await caches.match(event.request);
+        const salvo = await caches.match(request);
 
         if (salvo) return salvo;
-
-        if (event.request.mode === 'navigate') {
-          const pagina = await caches.match('./index.html');
-          if (pagina) return pagina;
-        }
 
         return Response.error();
       })
