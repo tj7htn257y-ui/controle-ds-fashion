@@ -7,7 +7,7 @@ const CHAVE_DADOS = 'ds-fashion-data';
 const CHAVE_BACKUP = 'ds-fashion-backup';
 
 const SUPABASE_URL = 'https://prufsnmbdiiuvdtczuqj.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_IN5G1_tyftVkbKwgXViaoQ_1LxzmB1S';
+const SUPABASE_KEY = 'sb_publishable_IN5G1_tyftVkbWkgXViaoQ_1LxzmB1S';
 const TABELA_NUVEM = 'ds_fashion_cloud';
 
 const encoder = new TextEncoder();
@@ -22,6 +22,7 @@ let salvamentoEmAndamento = Promise.resolve();
 let sincronizacaoEmAndamento = false;
 let carregandoNuvem = false;
 let envioNuvemPendente = false;
+let saidaSincronizando = false;
 
 let dados = {
   clientes: [],
@@ -286,8 +287,20 @@ async function obterRegistroNuvem() {
   return { data, sessao };
 }
 
+/* =========================================
+   ENVIO DOS DADOS PARA A NUVEM
+========================================= */
+
 async function enviarDadosNuvem() {
-  if (!supabaseClient || !chaveCriptografia || !metadadosSenha) return;
+  if (!supabaseClient) {
+    throw new Error('A conexão com a nuvem não está disponível.');
+  }
+
+  if (!chaveCriptografia || !metadadosSenha) {
+    throw new Error(
+      'O aplicativo não está desbloqueado ou a criptografia não está pronta.'
+    );
+  }
 
   const { data: sessaoData, error: erroSessao } =
     await supabaseClient.auth.getSession();
@@ -296,11 +309,17 @@ async function enviarDadosNuvem() {
 
   const sessao = sessaoData.session;
 
-  if (!sessao) return;
+  if (!sessao) {
+    throw new Error('Entre na conta da nuvem antes de sincronizar.');
+  }
 
   const registro = localStorage.getItem(CHAVE_DADOS);
 
-  if (!registro) return;
+  if (!registro) {
+    throw new Error(
+      'Não há dados criptografados salvos neste aparelho para enviar.'
+    );
+  }
 
   const payload = {
     user_id: sessao.user.id,
@@ -321,6 +340,8 @@ async function enviarDadosNuvem() {
     'Sincronização concluída em ' +
     new Date().toLocaleString('pt-BR')
   );
+
+  return true;
 }
 
 async function sincronizarComNuvem() {
@@ -328,7 +349,8 @@ async function sincronizarComNuvem() {
     !supabaseClient ||
     !chaveCriptografia ||
     sincronizacaoEmAndamento ||
-    carregandoNuvem
+    carregandoNuvem ||
+    saidaSincronizando
   ) return;
 
   sincronizacaoEmAndamento = true;
@@ -442,7 +464,12 @@ async function sincronizarComNuvem() {
     carregandoNuvem = false;
     sincronizacaoEmAndamento = false;
 
-    if (envioNuvemPendente && chaveCriptografia && supabaseClient) {
+    if (
+      envioNuvemPendente &&
+      chaveCriptografia &&
+      supabaseClient &&
+      !saidaSincronizando
+    ) {
       try {
         const { data } = await supabaseClient.auth.getSession();
 
@@ -564,7 +591,7 @@ async function salvarDados() {
 
       if (!data.session) return;
 
-      if (sincronizacaoEmAndamento) {
+      if (sincronizacaoEmAndamento || saidaSincronizando) {
         envioNuvemPendente = true;
 
         mostrarStatusNuvem(
@@ -749,8 +776,12 @@ async function entrarNoAplicativo() {
   }
 }
 
-function bloquearAplicativo() {
-  if (!confirm('Deseja bloquear o aplicativo?')) return;
+/* =========================================
+   BLOQUEAR APLICATIVO
+========================================= */
+
+function bloquearAplicativo(confirmar = true) {
+  if (confirmar && !confirm('Deseja bloquear o aplicativo?')) return false;
 
   chaveCriptografia = null;
   senhaAplicativoAtual = '';
@@ -763,6 +794,150 @@ function bloquearAplicativo() {
   $('confirmacao').value = '';
 
   mostrarMensagem('');
+
+  return true;
+}
+
+/* =========================================
+   NOVA FUNÇÃO: SALVAR, SINCRONIZAR E SAIR
+========================================= */
+
+async function sincronizarESair() {
+  const botao = $('botaoSairSincronizando');
+  const status = $('statusSaidaNuvem');
+
+  if (!chaveCriptografia) {
+    alert('Desbloqueie o aplicativo antes de sair e sincronizar.');
+    return;
+  }
+
+  if (saidaSincronizando) return;
+
+  if (sincronizacaoEmAndamento || carregandoNuvem) {
+    alert(
+      'Existe uma sincronização em andamento. Aguarde ela terminar antes de sair.'
+    );
+    return;
+  }
+
+  saidaSincronizando = true;
+
+  if (botao) {
+    botao.disabled = true;
+    botao.textContent = 'Sincronizando...';
+  }
+
+  if (status) {
+    status.textContent = 'Aguardando os salvamentos pendentes...';
+  }
+
+  mostrarStatusNuvem('Preparando sincronização para sair...');
+
+  try {
+    // 1. Aguarda qualquer salvamento que já esteja em andamento.
+    await salvamentoEmAndamento;
+
+    // 2. Faz um salvamento local final, com os dados atuais.
+    const salvamentoFinal = salvamentoEmAndamento
+      .catch(() => {})
+      .then(() => salvarLocalSemNuvem());
+
+    salvamentoEmAndamento = salvamentoFinal;
+
+    await salvamentoFinal;
+
+    if (status) {
+      status.textContent = 'Dados salvos neste aparelho. Verificando a nuvem...';
+    }
+
+    // 3. Verifica se o Supabase está inicializado.
+    if (!supabaseClient) {
+      throw new Error(
+        'A conexão com a nuvem não está disponível. Verifique a conexão e tente novamente.'
+      );
+    }
+
+    if (!metadadosSenha || !senhaAplicativoAtual) {
+      throw new Error(
+        'Não foi possível validar a criptografia do aplicativo.'
+      );
+    }
+
+    // 4. Confirma que existe uma sessão válida.
+    const { data, error } = await supabaseClient.auth.getSession();
+
+    if (error) throw error;
+
+    if (!data.session) {
+      throw new Error(
+        'Você não está conectado à conta da nuvem. Entre na sua conta e tente novamente.'
+      );
+    }
+
+    if (status) {
+      status.textContent = 'Enviando dados criptografados para a nuvem...';
+    }
+
+    mostrarStatusNuvem('Enviando os dados para o Supabase...');
+
+    // 5. Envia o registro criptografado e exige confirmação de sucesso.
+    const enviado = await enviarDadosNuvem();
+
+    if (enviado !== true) {
+      throw new Error(
+        'A nuvem não confirmou o recebimento dos dados.'
+      );
+    }
+
+    // 6. Só bloqueia depois da confirmação do envio.
+    if (status) {
+      status.textContent = 'Sincronização concluída. Aplicativo bloqueado.';
+    }
+
+    mostrarStatusNuvem(
+      'Dados sincronizados com sucesso. Aplicativo bloqueado.'
+    );
+
+    alert(
+      'Dados sincronizados com sucesso!\n\n' +
+      'Seus dados estão salvos neste aparelho e na nuvem. ' +
+      'O aplicativo será bloqueado agora.'
+    );
+
+    bloquearAplicativo(false);
+
+  } catch (erro) {
+    console.error('Falha ao sair e sincronizar:', erro);
+
+    const mensagem = erro && erro.message
+      ? erro.message
+      : 'Erro desconhecido ao sincronizar.';
+
+    // Os dados locais não são apagados nem o aplicativo é bloqueado.
+    if (status) {
+      status.textContent =
+        'Falha na sincronização. Seus dados continuam salvos neste aparelho.';
+    }
+
+    mostrarStatusNuvem(
+      'Dados locais preservados. Não foi possível concluir a sincronização: ' +
+      mensagem
+    );
+
+    alert(
+      'Não foi possível sincronizar com a nuvem.\n\n' +
+      mensagem +
+      '\n\nO aplicativo continuará aberto e seus dados locais foram preservados.'
+    );
+
+  } finally {
+    saidaSincronizando = false;
+
+    if (botao) {
+      botao.disabled = false;
+      botao.textContent = 'Sair e sincronizar com a nuvem';
+    }
+  }
 }
 
 /* =========================================
@@ -786,14 +961,26 @@ function criarPainelBackup() {
 
   painel.innerHTML = `
     <strong>Segurança dos seus dados</strong>
+
     <p id="statusBackup" style="font-size:13px;margin:8px 0;">
       Salvamento automático ativado.
     </p>
+
     <button type="button" id="botaoBackupIcloud"
       style="padding:10px 14px;border:0;border-radius:8px;
       background:#24152f;color:white;">
       Exportar backup para iCloud / Arquivos
     </button>
+
+    <button type="button" id="botaoSairSincronizando"
+      style="display:block;margin-top:10px;padding:10px 14px;
+      border:0;border-radius:8px;background:#176b45;color:white;">
+      Sair e sincronizar com a nuvem
+    </button>
+
+    <p id="statusSaidaNuvem"
+      style="font-size:13px;margin:8px 0 0;">
+    </p>
   `;
 
   const nav = $('aplicativo').querySelector('nav');
@@ -804,7 +991,14 @@ function criarPainelBackup() {
     $('aplicativo').prepend(painel);
   }
 
+  // Mantém a exportação manual original.
   $('botaoBackupIcloud').addEventListener('click', exportarBackup);
+
+  // Novo botão para sincronizar e bloquear o aplicativo.
+  $('botaoSairSincronizando').addEventListener(
+    'click',
+    sincronizarESair
+  );
 
   atualizarStatusBackup();
 }
