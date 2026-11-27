@@ -1,4 +1,5 @@
-const CACHE = 'ds-fashion-v7';
+
+const CACHE = 'ds-fashion-v8';
 
 const FILES = [
   './',
@@ -7,7 +8,7 @@ const FILES = [
   './manifest.json'
 ];
 
-// Instala a nova versão e prepara os arquivos para uso offline
+// Instala a nova versão
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE)
@@ -16,23 +17,25 @@ self.addEventListener('install', event => {
   );
 });
 
-// Ativa a nova versão e apaga os caches antigos
+// Ativa a nova versão e remove somente caches antigos
+// pertencentes ao Controle DS Fashion
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
-      .then(keys =>
-        Promise.all(
-          keys
-            .filter(key => key !== CACHE)
-            .map(key => caches.delete(key))
-        )
-      )
+      .then(keys => Promise.all(
+        keys
+          .filter(key =>
+            key.startsWith('ds-fashion-') &&
+            key !== CACHE
+          )
+          .map(key => caches.delete(key))
+      ))
       .then(() => self.clients.claim())
   );
 });
 
-// Busca primeiro a versão atualizada na internet.
-// Se estiver sem conexão, utiliza o arquivo salvo no cache.
+// Primeiro tenta acessar a internet.
+// Sem conexão, utiliza os arquivos armazenados.
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
 
@@ -52,6 +55,22 @@ self.addEventListener('fetch', event => {
 
         return response;
       })
-      .catch(() => caches.match(event.request))
+      .catch(async () => {
+        const arquivoSalvo = await caches.match(event.request);
+
+        if (arquivoSalvo) {
+          return arquivoSalvo;
+        }
+
+        if (event.request.mode === 'navigate') {
+          const paginaOffline = await caches.match('./index.html');
+
+          if (paginaOffline) {
+            return paginaOffline;
+          }
+        }
+
+        return Response.error();
+      })
   );
 });
